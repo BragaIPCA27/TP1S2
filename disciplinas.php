@@ -3,11 +3,20 @@ require_once 'config.php';
 require_group(['ADMIN']);
 
 $grupo = $_SESSION['user']['grupo_nome'] ?? 'ADMIN';
+$login = $_SESSION['user']['login'] ?? '';
 $tipoUtilizador = match ($grupo) {
-  'ADMIN' => 'Admin',
+  'ADMIN' => 'Administrador',
   'FUNCIONARIO' => 'Funcionário',
   default => 'Aluno',
 };
+
+$perfilAdmin = [];
+if ($login !== '') {
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfilAdmin = $stmt->get_result()->fetch_assoc() ?: [];
+}
 
 $erro = null;
 $ok = null;
@@ -39,7 +48,26 @@ if ($editDisciplinaId > 0) {
   }
 }
 
-$disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome_disc");
+$colSubmetidoPor = $conn->query("SHOW COLUMNS FROM disciplinas LIKE 'submetido_por'")->fetch_assoc();
+if (!$colSubmetidoPor) {
+  $conn->query("ALTER TABLE disciplinas ADD COLUMN submetido_por VARCHAR(20) DEFAULT NULL");
+}
+$colSubmetidoEm = $conn->query("SHOW COLUMNS FROM disciplinas LIKE 'submetido_em'")->fetch_assoc();
+if (!$colSubmetidoEm) {
+  $conn->query("ALTER TABLE disciplinas ADD COLUMN submetido_em DATETIME DEFAULT NULL");
+}
+
+$submetidoFallback = (string)($_SESSION['user']['login'] ?? 'gestor');
+$stmtFillDisciplinas = $conn->prepare(
+  "UPDATE disciplinas
+      SET submetido_por = CASE WHEN submetido_por IS NULL OR TRIM(submetido_por) = '' THEN ? ELSE submetido_por END,
+          submetido_em = CASE WHEN submetido_em IS NULL THEN NOW() ELSE submetido_em END
+    WHERE submetido_por IS NULL OR TRIM(submetido_por) = '' OR submetido_em IS NULL"
+);
+$stmtFillDisciplinas->bind_param('s', $submetidoFallback);
+$stmtFillDisciplinas->execute();
+
+$disciplinas = $conn->query("SELECT ID, Nome_disc, submetido_por, submetido_em FROM disciplinas ORDER BY Nome_disc");
 ?>
 <!doctype html>
 <html lang="pt">
@@ -87,10 +115,10 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome
       <div class="card">
         <div class="table-section">
           <h3>Lista de Disciplinas</h3>
-          <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
-            <div style="flex:1;min-width:200px;">
-              <label for="search_disciplina" style="margin-bottom:4px;">Pesquisar</label>
-              <label for="search_disciplina" style="margin-bottom:4px;">Filtrar por disciplina</label>
+          <div class="search-bar disciplinas-filter-bar">
+            <div class="filter-field-grow-200">
+              <label for="search_disciplina" class="filter-label-compact">Pesquisar</label>
+              <label for="search_disciplina" class="filter-label-compact">Filtrar por disciplina</label>
               <select id="search_disciplina" onchange="filtrarDisciplinas()">
                 <option value="">— Todas as disciplinas —</option>
                 <?php $disciplinas->data_seek(0); while ($rd = $disciplinas->fetch_assoc()): ?>
@@ -98,15 +126,17 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome
                 <?php endwhile; $disciplinas->data_seek(0); ?>
               </select>
             </div>
-            <button type="button" onclick="document.getElementById('search_disciplina').value='';filtrarDisciplinas();" class="btn-sm" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:0;">Limpar</button>
+            <button type="button" onclick="document.getElementById('search_disciplina').value='';filtrarDisciplinas();" class="btn-sm btn-neutral btn-align-bottom">Limpar</button>
           </div>
-          <div id="sem-disciplinas" style="display:none;padding:16px;text-align:center;color:#888;">Nenhuma disciplina encontrada.</div>
+          <div id="sem-disciplinas" class="empty-search-message">Nenhuma disciplina encontrada.</div>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>Nome</th>
+                  <th>Submetido por</th>
+                  <th>Data de Submissão</th>
                   <th>Ações</th>
                 </tr>
               </thead>
@@ -119,6 +149,19 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome
                   <tr class="disciplina-item" data-nome="<?= htmlspecialchars(strtolower($r['Nome_disc'])) ?>">
                     <td data-label="ID"><?= (int)$r['ID'] ?></td>
                     <td data-label="Nome"><?= htmlspecialchars($r['Nome_disc']) ?></td>
+                    <td data-label="Submetido por (utilizador)">
+                      <?php $submetidoPor = trim((string)($r['submetido_por'] ?? '')); ?>
+                      <?php if ($submetidoPor !== '' && $submetidoPor !== '-'): ?>
+                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                          <?= htmlspecialchars(nome_utilizador_por_login($conn, $submetidoPor)) ?>
+                        </a>
+                      <?php else: ?>
+                        -
+                      <?php endif; ?>
+                    </td>
+                    <td data-label="Data de Submissão">
+                      <span class="meta-small"><?= htmlspecialchars((string)($r['submetido_em'] ?? '-')) ?></span>
+                    </td>
                     <td data-label="Ações">
                       <a class="action-btn edit" href="disciplinas.php?edit_disciplina=<?= (int)$r['ID'] ?>">Editar</a>
                       <a class="action-btn" href="inserir.php?del_disciplina=<?= (int)$r['ID'] ?>" onclick="return confirm('Tem a certeza que deseja excluir esta disciplina?')">Excluir</a>
@@ -127,7 +170,7 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome
                 <?php endwhile; ?>
                 <?php if ($count === 0): ?>
                   <tr>
-                    <td colspan="3" class="empty-state">
+                    <td colspan="5" class="empty-state">
                       <p>Nenhuma disciplina cadastrada</p>
                     </td>
                   </tr>
@@ -142,6 +185,13 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc FROM disciplinas ORDER BY Nome
     <div class="sidebar">
       <div class="card">
         <div class="user-info">
+          <?php if (!empty($perfilAdmin['foto_path'])): ?>
+            <img class="profile-photo" src="<?= htmlspecialchars((string)$perfilAdmin['foto_path']) ?>" alt="Fotografia de perfil">
+          <?php endif; ?>
+          <?php if (!empty($perfilAdmin['nome'])): ?><strong>Nome:</strong> <?= htmlspecialchars((string)$perfilAdmin['nome']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['email'])): ?><strong>Email:</strong> <?= htmlspecialchars((string)$perfilAdmin['email']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['telefone'])): ?><strong>Telefone:</strong> <?= htmlspecialchars((string)$perfilAdmin['telefone']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['morada'])): ?><strong>Morada:</strong> <?= htmlspecialchars((string)$perfilAdmin['morada']) ?><br><?php endif; ?>
           <strong>Tipo de utilizador:</strong> <?= htmlspecialchars($tipoUtilizador) ?><br>
           <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?>
         </div>

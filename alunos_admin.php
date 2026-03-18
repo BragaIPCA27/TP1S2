@@ -5,10 +5,17 @@ require_group(['ADMIN']);
 $login = $_SESSION['user']['login'];
 $grupo = $_SESSION['user']['grupo_nome'] ?? 'ADMIN';
 $tipoUtilizador = match ($grupo) {
-  'ADMIN' => 'Admin',
+  'ADMIN' => 'Administrador',
+  'GESTOR' => 'Gestor',
   'FUNCIONARIO' => 'Funcionário',
   default => 'Aluno',
 };
+
+$perfilAdminSidebar = [];
+$stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+$stmt->bind_param("s", $login);
+$stmt->execute();
+$perfilAdminSidebar = $stmt->get_result()->fetch_assoc() ?: [];
 
 function traduz_estado_aprovacao(string $status): string {
     return match (strtoupper($status)) {
@@ -86,6 +93,22 @@ if (isset($_GET['user_action'], $_GET['login'])) {
 
   if (in_array($userAction, ['approve', 'reject', 'delete'], true)) {
     if ($userAction === 'delete') {
+      $stmt = $conn->prepare(
+        "SELECT g.GRUPO AS tipo_conta
+           FROM users u
+           JOIN grupos g ON g.ID = u.grupo
+          WHERE u.login = ?
+          LIMIT 1"
+      );
+      $stmt->bind_param("s", $targetLogin);
+      $stmt->execute();
+      $targetUser = $stmt->get_result()->fetch_assoc();
+
+      if (strtoupper((string)($targetUser['tipo_conta'] ?? '')) === 'ADMIN') {
+        header('Location: alunos_admin.php?ok=user_admin_blocked');
+        exit;
+      }
+
       if ($targetLogin === $login) {
         header('Location: alunos_admin.php?ok=user_self_blocked');
         exit;
@@ -374,6 +397,8 @@ if (isset($_GET['ok']) && $ok === null) {
     $ok = 'Conta removida com sucesso.';
   } elseif ($_GET['ok'] === 'user_self_blocked') {
     $erro = 'Nao podes remover a tua propria conta.';
+  } elseif ($_GET['ok'] === 'user_admin_blocked') {
+    $erro = 'Nao e permitido remover contas de administradores.';
     } elseif ($_GET['ok'] === 'perfil') {
         $ok = 'Pedido de alteracao de perfil aprovado com sucesso.';
     } elseif ($_GET['ok'] === 'perfil_parcial') {
@@ -390,6 +415,7 @@ if (isset($_GET['ok']) && $ok === null) {
 }
 
 $q = trim($_GET['q'] ?? '');
+$openLogin = strtolower(trim((string)($_GET['open_login'] ?? '')));
 
 $cursosDisponiveis = [];
 $resCursos = $conn->query("SELECT ID, Nome FROM cursos ORDER BY Nome");
@@ -418,18 +444,28 @@ $pedidosCursosPendentes = $stmtPed->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $alunos = $conn->query(
     "SELECT
-    u.login, u.approval_status, u.approved_by AS conta_approved_by, g.GRUPO AS tipo_conta,
-    a.matricula, a.nome, a.email, a.telefone, a.morada, a.foto_path AS foto_atual, a.updated_at,
+    u.login, u.approval_status, u.approved_by AS conta_approved_by, u.approved_at AS conta_approved_at, g.GRUPO AS tipo_conta,
+    a.matricula,
+    COALESCE(a.nome, ap.nome) AS nome,
+    COALESCE(a.email, ap.email) AS email,
+    COALESCE(a.telefone, ap.telefone) AS telefone,
+    COALESCE(a.morada, ap.morada) AS morada,
+    a.foto_path AS foto_atual,
+    COALESCE(a.updated_at, ap.updated_at) AS updated_at,
     p.nome AS pedido_nome, p.telefone AS pedido_telefone, p.morada AS pedido_morada, p.foto_path AS pedido_foto,
-  p.status AS perfil_status, p.reviewed_by AS perfil_reviewed_by, p.reviewed_at AS perfil_reviewed_at, p.requested_at AS perfil_created_at,
-    COALESCE(a.foto_path, pp.foto_path) AS foto_path
+  p.status AS perfil_status,
+  COALESCE(p.reviewed_by, u.approved_by) AS perfil_reviewed_by,
+  COALESCE(p.reviewed_at, u.approved_at) AS perfil_reviewed_at,
+  COALESCE(p.requested_at, a.updated_at, ap.updated_at, u.approved_at) AS perfil_created_at,
+    COALESCE(a.foto_path, pp.foto_path, ap.foto_path) AS foto_path
      FROM users u
      JOIN grupos g ON g.ID = u.grupo
      LEFT JOIN alunos a ON a.login = u.login
+     LEFT JOIN admin_perfis ap ON ap.login = u.login
      LEFT JOIN perfil_pedidos p ON p.login = u.login
    LEFT JOIN perfil_pedidos pp ON pp.login = u.login AND pp.status = 'APPROVED'
-     WHERE g.GRUPO IN ('ALUNO', 'FUNCIONARIO')
-     ORDER BY FIELD(g.GRUPO, 'ALUNO', 'FUNCIONARIO'), COALESCE(a.nome, u.login), u.login"
+    WHERE g.GRUPO IN ('ALUNO', 'FUNCIONARIO', 'GESTOR', 'ADMIN')
+    ORDER BY FIELD(g.GRUPO, 'ALUNO', 'FUNCIONARIO', 'GESTOR', 'ADMIN'), COALESCE(a.nome, u.login), u.login"
 );
 ?>
 <!doctype html>
@@ -457,19 +493,19 @@ $alunos = $conn->query(
         <div class="form-section">
           <h3>Pesquisar Utilizadores</h3>
           <div class="form-row">
-            <input id="search_utilizador" type="search" placeholder="Pesquisar por login, matrícula ou nome…" value="<?= htmlspecialchars($q) ?>" oninput="filtrarUtilizadores()" style="flex:1;">
+            <input id="search_utilizador" class="search-input-flex" type="search" placeholder="Pesquisar por login, matrícula ou nome…" value="<?= htmlspecialchars($q) ?>" oninput="filtrarUtilizadores()">
             <button type="button" class="clear-btn" onclick="document.getElementById('search_utilizador').value='';document.getElementById('filtro_curso').value='';filtrarUtilizadores();">Limpar</button>
           </div>
-          <div style="margin-top:10px;">
-            <label for="filtro_curso" style="display:block;color:#334155;font-weight:600;margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:0.3px;">Filtrar por Curso (Funcionários)</label>
-            <select id="filtro_curso" onchange="filtrarUtilizadores()" style="width:100%;max-width:100%;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;font-family:inherit;background:#fff;">
+          <div class="curso-filter-wrap">
+            <label for="filtro_curso" class="admin-filter-label">Filtrar por Curso (Funcionários)</label>
+            <select id="filtro_curso" class="admin-filter-select" onchange="filtrarUtilizadores()">
               <option value="">Todos os cursos</option>
               <?php foreach ($cursosDisponiveis as $curso): ?>
                 <option value="<?= (int)$curso['ID'] ?>"><?= htmlspecialchars((string)$curso['Nome']) ?></option>
               <?php endforeach; ?>
             </select>
           </div>
-          <div id="sem-utilizadores" style="display:none;padding:12px 0;color:#888;">Nenhum utilizador corresponde à pesquisa.</div>
+          <div id="sem-utilizadores" class="empty-filter-message small">Nenhum utilizador corresponde à pesquisa.</div>
         </div>
       </div>
 
@@ -495,24 +531,24 @@ $alunos = $conn->query(
                   <td data-label="Solicitado"><?= date('d/m/Y H:i', strtotime($pedido['solicitado_em'])) ?></td>
                   <td data-label="Ações">
                     <div class="action-group">
-                      <form method="post" style="display:inline;">
+                      <form method="post" class="inline-form">
                         <input type="hidden" name="func_curso_pedido_action" value="aprovar">
                         <input type="hidden" name="pedido_id" value="<?= (int)$pedido['id'] ?>">
-                        <button type="submit" class="action-link approve" style="border:0;cursor:pointer;">Aprovar</button>
+                        <button type="submit" class="action-link approve action-btn-reset">Aprovar</button>
                       </form>
                       <button type="button" class="action-link reject" onclick="showRejectForm(<?= (int)$pedido['id'] ?>)">Rejeitar</button>
                     </div>
                   </td>
                 </tr>
-                <tr id="reject-form-<?= (int)$pedido['id'] ?>" style="display:none;">
-                  <td colspan="4" style="padding:12px;">
-                    <form method="post" style="display:grid;gap:8px;">
-                      <textarea name="motivo_rejeicao" placeholder="Motivo da rejeição (opcional)" style="width:100%;min-height:80px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:13px;font-family:inherit;"></textarea>
-                      <div style="display:flex;gap:8px;">
+                <tr id="reject-form-<?= (int)$pedido['id'] ?>" class="reject-row-hidden">
+                  <td colspan="4" class="reject-cell-padding">
+                    <form method="post" class="reject-form-grid">
+                      <textarea name="motivo_rejeicao" class="reject-textarea" placeholder="Motivo da rejeição (opcional)"></textarea>
+                      <div class="reject-actions-row">
                         <input type="hidden" name="func_curso_pedido_action" value="rejeitar">
                         <input type="hidden" name="pedido_id" value="<?= (int)$pedido['id'] ?>">
-                        <button type="submit" class="action-link reject" style="border:0;cursor:pointer;flex:1;">Confirmar Rejeição</button>
-                        <button type="button" class="clear-btn" onclick="hideRejectForm(<?= (int)$pedido['id'] ?>)" style="flex:1;">Cancelar</button>
+                        <button type="submit" class="action-link reject action-btn-reset grow-1">Confirmar Rejeição</button>
+                        <button type="button" class="clear-btn grow-1" onclick="hideRejectForm(<?= (int)$pedido['id'] ?>)">Cancelar</button>
                       </div>
                     </form>
                   </td>
@@ -563,7 +599,14 @@ $alunos = $conn->query(
                             type="button"
                             class="category-dropdown-btn"
                             onclick="toggleCategoriaUtilizadores('<?= htmlspecialchars($tipoAtual) ?>', this)">
-                            <span><?= $tipoAtual === 'FUNCIONARIO' ? 'Funcionários' : 'Alunos' ?></span>
+                            <span>
+                              <?= match ($tipoAtual) {
+                                'ADMIN' => 'Administradores',
+                                'FUNCIONARIO' => 'Funcionários',
+                                'GESTOR' => 'Gestores',
+                                default => 'Alunos',
+                              } ?>
+                            </span>
                             <span class="category-chevron">▼</span>
                           </button>
                         </td>
@@ -579,14 +622,21 @@ $alunos = $conn->query(
                     ?>
                     <tr class="utilizador-row" data-group="<?= htmlspecialchars($tipoAtual) ?>" data-login="<?= $dataLogin ?>" data-nome="<?= $dataNome ?>" data-matricula="<?= $dataMatricula ?>" data-cursos="<?= htmlspecialchars($dataCursos) ?>" data-details="<?= $detailsId ?>">
                       <td data-label="Login"><?= htmlspecialchars($a['login']) ?></td>
-                      <td data-label="Tipo"><?= htmlspecialchars($a['tipo_conta'] === 'FUNCIONARIO' ? 'Funcionário' : 'Aluno') ?></td>
+                      <td data-label="Tipo">
+                        <?= htmlspecialchars(match ((string)$a['tipo_conta']) {
+                          'ADMIN' => 'Administrador',
+                          'FUNCIONARIO' => 'Funcionário',
+                          'GESTOR' => 'Gestor',
+                          default => 'Aluno',
+                        }) ?>
+                      </td>
                       <td data-label="Conta">
                         <?php if ($contaStatus === 'APPROVED'): ?>
                           <span class="pill complete"><?= htmlspecialchars(traduz_estado_aprovacao($contaStatus)) ?></span>
-                          <div style="font-size:11px;color:#64748b;margin-top:4px;">Aprovado por: <?= htmlspecialchars($a['conta_approved_by'] ?? '-') ?></div>
+                          <div class="meta-detail-line">Aprovado por: <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)($a['conta_approved_by'] ?? ''))) ?></div>
                         <?php elseif ($contaStatus === 'REJECTED'): ?>
                           <span class="pill rejected"><?= htmlspecialchars(traduz_estado_aprovacao($contaStatus)) ?></span>
-                          <div style="font-size:11px;color:#64748b;margin-top:4px;">Revisto por: <?= htmlspecialchars($a['conta_approved_by'] ?? '-') ?></div>
+                          <div class="meta-detail-line">Revisto por: <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)($a['conta_approved_by'] ?? ''))) ?></div>
                         <?php else: ?>
                           <span class="pill pending"><?= htmlspecialchars(traduz_estado_aprovacao($contaStatus)) ?></span>
                         <?php endif; ?>
@@ -594,10 +644,10 @@ $alunos = $conn->query(
                       <td data-label="Pedido de Perfil">
                         <?php if ($perfilStatus === 'APPROVED'): ?>
                           <span class="pill complete"><?= htmlspecialchars(traduz_estado_aprovacao($perfilStatus)) ?></span>
-                          <div style="font-size:11px;color:#64748b;margin-top:4px;">Aprovado por: <?= htmlspecialchars($a['perfil_reviewed_by'] ?? '-') ?></div>
+                          <div class="meta-detail-line">Aprovado por: <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)($a['perfil_reviewed_by'] ?? ''))) ?></div>
                         <?php elseif ($perfilStatus === 'REJECTED'): ?>
                           <span class="pill rejected"><?= htmlspecialchars(traduz_estado_aprovacao($perfilStatus)) ?></span>
-                          <div style="font-size:11px;color:#64748b;margin-top:4px;">Revisto por: <?= htmlspecialchars($a['perfil_reviewed_by'] ?? '-') ?></div>
+                          <div class="meta-detail-line">Revisto por: <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)($a['perfil_reviewed_by'] ?? ''))) ?></div>
                         <?php elseif ($perfilStatus === 'PENDING'): ?>
                           <span class="pill pending"><?= htmlspecialchars(traduz_estado_aprovacao($perfilStatus)) ?></span>
                         <?php else: ?>
@@ -612,7 +662,7 @@ $alunos = $conn->query(
                           <?php if ($contaStatus === 'PENDING'): ?>
                             <a class="action-link reject" href="?user_action=reject&login=<?= urlencode($a['login']) ?>">Recusar</a>
                           <?php endif; ?>
-                          <?php if ($contaStatus === 'APPROVED'): ?>
+                          <?php if ($contaStatus === 'APPROVED' && $tipoAtual !== 'ADMIN'): ?>
                             <a class="action-link remove" href="?user_action=delete&login=<?= urlencode($a['login']) ?>" onclick="return confirm('Tens a certeza que queres remover esta conta?')">Remover conta</a>
                           <?php endif; ?>
                         </div>
@@ -656,7 +706,7 @@ $alunos = $conn->query(
                                 </div>
 
                                 <div class="func-cursos-actions">
-                                  <button type="submit" class="action-link approve" style="border:0;cursor:pointer;">Guardar cursos</button>
+                                  <button type="submit" class="action-link approve action-btn-reset">Guardar cursos</button>
                                 </div>
                               </form>
                             </details>
@@ -825,19 +875,21 @@ $alunos = $conn->query(
                       <td colspan="8" class="details-cell">
                         <div class="details-grid">
                           <?php if (!empty($a['foto_path'])): ?>
-                            <div class="detail-item detail-photo-wrap" style="grid-column: 1 / -1;">
+                            <div class="detail-item detail-photo-wrap full-span">
                               <img class="detail-profile-photo" src="<?= htmlspecialchars($a['foto_path']) ?>" alt="Fotografia de perfil">
                             </div>
                           <?php endif; ?>
-                          <div class="detail-item"><strong>Matrícula:</strong> <?= htmlspecialchars($a['matricula'] ?? '-') ?></div>
+                          <div class="detail-item"><strong>Login:</strong> <?= htmlspecialchars($a['login'] ?? '-') ?></div>
                           <div class="detail-item"><strong>Nome:</strong> <?= htmlspecialchars($a['nome'] ?? '-') ?></div>
                           <div class="detail-item"><strong>Email:</strong> <?= htmlspecialchars($a['email'] ?? '-') ?></div>
                           <div class="detail-item"><strong>Telefone:</strong> <?= htmlspecialchars($a['telefone'] ?? '-') ?></div>
                           <div class="detail-item"><strong>Morada:</strong> <?= htmlspecialchars($a['morada'] ?? '-') ?></div>
+                          <?php if ($tipoAtual !== 'ADMIN'): ?>
                           <div class="detail-item"><strong>Data de criação do perfil:</strong> <?= htmlspecialchars($a['perfil_created_at'] ?? '-') ?></div>
                           <div class="detail-item"><strong>Estado Perfil:</strong> <?= $preenchido ? 'Perfil completo' : 'Por preencher' ?></div>
-                          <div class="detail-item"><strong>Perfil aprovado por:</strong> <?= htmlspecialchars($a['perfil_reviewed_by'] ?? '-') ?></div>
+                          <div class="detail-item"><strong>Perfil aprovado por:</strong> <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)($a['perfil_reviewed_by'] ?? ''))) ?></div>
                           <div class="detail-item"><strong>Perfil aprovado em:</strong> <?= htmlspecialchars($a['perfil_reviewed_at'] ?? '-') ?></div>
+                          <?php endif; ?>
                           <div class="detail-item"><strong>Atualizado:</strong> <?= htmlspecialchars($a['updated_at'] ?? '-') ?></div>
                         </div>
                       </td>
@@ -854,6 +906,13 @@ $alunos = $conn->query(
     <div class="sidebar">
       <div class="card">
         <div class="user-info">
+          <?php if (!empty($perfilAdminSidebar['foto_path'])): ?>
+            <img class="profile-photo" src="<?= htmlspecialchars((string)$perfilAdminSidebar['foto_path']) ?>" alt="Fotografia de perfil">
+          <?php endif; ?>
+          <?php if (!empty($perfilAdminSidebar['nome'])): ?><strong>Nome:</strong> <?= htmlspecialchars((string)$perfilAdminSidebar['nome']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdminSidebar['email'])): ?><strong>Email:</strong> <?= htmlspecialchars((string)$perfilAdminSidebar['email']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdminSidebar['telefone'])): ?><strong>Telefone:</strong> <?= htmlspecialchars((string)$perfilAdminSidebar['telefone']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdminSidebar['morada'])): ?><strong>Morada:</strong> <?= htmlspecialchars((string)$perfilAdminSidebar['morada']) ?><br><?php endif; ?>
           <strong>Tipo de utilizador:</strong> <?= htmlspecialchars($tipoUtilizador) ?><br>
           <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?>
         </div>
@@ -862,13 +921,15 @@ $alunos = $conn->query(
   </div>
 
   <script>
+    const openLoginDireto = <?= json_encode($openLogin, JSON_UNESCAPED_UNICODE) ?>;
+
     function filtrarUtilizadores() {
       const term = document.getElementById('search_utilizador').value.toLowerCase().trim();
       const cursFilter = document.getElementById('filtro_curso').value.trim();
       const rows = document.querySelectorAll('tr.utilizador-row');
       const groupRows = document.querySelectorAll('tr.utilizadores-group-row');
-      const visiveisPorGrupo = { ALUNO: 0, FUNCIONARIO: 0 };
-      const collapsedPorGrupo = { ALUNO: false, FUNCIONARIO: false };
+      const visiveisPorGrupo = { ALUNO: 0, FUNCIONARIO: 0, GESTOR: 0, ADMIN: 0 };
+      const collapsedPorGrupo = { ALUNO: false, FUNCIONARIO: false, GESTOR: false, ADMIN: false };
 
       groupRows.forEach(grpRow => {
         const grp = (grpRow.dataset.group || '').toUpperCase();
@@ -921,6 +982,43 @@ $alunos = $conn->query(
 
     function initFiltragem() {
       filtrarUtilizadores();
+      abrirDadosUtilizadorDireto();
+    }
+
+    function abrirDadosUtilizadorDireto() {
+      if (!openLoginDireto) {
+        return;
+      }
+
+      const rows = Array.from(document.querySelectorAll('tr.utilizador-row'));
+      const targetRow = rows.find(row => (row.dataset.login || '').trim() === openLoginDireto);
+      if (!targetRow) {
+        return;
+      }
+
+      const grupo = (targetRow.dataset.group || '').toUpperCase();
+      const grpRow = document.querySelector('tr.utilizadores-group-row[data-group="' + grupo + '"]');
+      if (grpRow && grpRow.dataset.collapsed === '1') {
+        grpRow.dataset.collapsed = '0';
+        const btn = grpRow.querySelector('.category-dropdown-btn');
+        if (btn) {
+          btn.classList.add('open');
+        }
+      }
+
+      filtrarUtilizadores();
+
+      const detailsRow = document.getElementById(targetRow.dataset.details);
+      const toggleBtn = targetRow.querySelector('button.toggle-btn');
+      if (detailsRow) {
+        detailsRow.classList.add('open');
+        detailsRow.style.display = 'table-row';
+      }
+      if (toggleBtn) {
+        toggleBtn.textContent = 'Ocultar dados';
+      }
+
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     if (document.readyState === 'loading') {

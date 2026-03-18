@@ -33,7 +33,7 @@ $perfil = null;
 
 function traduz_grupo_nome(string $grupo): string {
   return match ($grupo) {
-    'ADMIN' => 'Admin',
+    'ADMIN' => 'Administrador',
     'FUNCIONARIO' => 'Funcionário',
     default => 'Aluno',
   };
@@ -55,6 +55,13 @@ if ($grupo === 'ALUNO' || $grupo === 'FUNCIONARIO') {
       $perfil['foto_path'] = $perfilFotoAprovada['foto_path'];
     }
   }
+}
+
+if ($grupo === 'ADMIN') {
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfil = $stmt->get_result()->fetch_assoc() ?: [];
 }
 
 // Aprovar/Rejeitar matrícula (com observação opcional via POST)
@@ -187,7 +194,70 @@ $stmt = $conn->prepare(
      ORDER BY m.status, c.Nome, m.login"
 );
 $stmt->execute();
-$matriculas = $stmt->get_result();
+$matriculasRes = $stmt->get_result();
+
+$statusPrioridade = [
+  'PENDING' => 1,
+  'CANCEL_PENDING' => 2,
+  'CANCEL_REJECTED' => 3,
+  'REJECTED' => 4,
+  'APPROVED' => 5,
+  'CANCELLED' => 6,
+];
+
+$matriculasAgrupadas = [];
+while ($r = $matriculasRes->fetch_assoc()) {
+  $loginAluno = (string)$r['login'];
+  $nomeAluno = trim((string)($r['aluno_nome'] ?? ''));
+  $statusLinha = strtoupper((string)($r['status'] ?? 'PENDING'));
+  $approvedByLogin = trim((string)($r['approved_by'] ?? ''));
+  $approvedByNome = $approvedByLogin !== '' ? nome_utilizador_por_login($conn, $approvedByLogin) : '-';
+
+  if (!isset($matriculasAgrupadas[$loginAluno])) {
+    $matriculasAgrupadas[$loginAluno] = [
+      'login' => $loginAluno,
+      'nome' => $nomeAluno !== '' ? $nomeAluno : $loginAluno,
+      'email' => (string)($r['aluno_email'] ?? '-'),
+      'telefone' => (string)($r['aluno_telefone'] ?? '-'),
+      'morada' => (string)($r['aluno_morada'] ?? '-'),
+      'foto' => (string)($r['aluno_foto'] ?? ''),
+      'matriculas' => [],
+      'cursos_matriculados' => [],
+      'summary_status' => $statusLinha,
+      'summary_curso' => '-',
+      'summary_aprovado_por' => $approvedByNome,
+      'has_summary_curso' => false,
+    ];
+  }
+
+  $matriculasAgrupadas[$loginAluno]['matriculas'][] = [
+    'curso_id' => (int)$r['ID'],
+    'curso_nome' => (string)$r['Nome'],
+    'data_matricula' => (string)($r['data_matricula'] ?? '-'),
+    'status' => $statusLinha,
+    'approved_by' => $approvedByNome,
+    'approved_at' => (string)($r['approved_at'] ?? '-'),
+    'observacao' => (string)($r['observacao'] ?? ''),
+  ];
+
+  if (in_array($statusLinha, ['APPROVED', 'CANCEL_REJECTED'], true)) {
+    $cursoNome = (string)$r['Nome'];
+    if (!in_array($cursoNome, $matriculasAgrupadas[$loginAluno]['cursos_matriculados'], true)) {
+      $matriculasAgrupadas[$loginAluno]['cursos_matriculados'][] = $cursoNome;
+    }
+  }
+
+  $statusAtualResumo = $matriculasAgrupadas[$loginAluno]['summary_status'];
+  if ($statusLinha !== 'APPROVED' && (
+    !$matriculasAgrupadas[$loginAluno]['has_summary_curso'] ||
+    ($statusPrioridade[$statusLinha] ?? 99) < ($statusPrioridade[$statusAtualResumo] ?? 99)
+  )) {
+    $matriculasAgrupadas[$loginAluno]['summary_status'] = $statusLinha;
+    $matriculasAgrupadas[$loginAluno]['summary_curso'] = (string)$r['Nome'];
+    $matriculasAgrupadas[$loginAluno]['summary_aprovado_por'] = $approvedByNome;
+    $matriculasAgrupadas[$loginAluno]['has_summary_curso'] = true;
+  }
+}
 
 function traduz_status_matricula(string $status): string {
   return match (strtoupper($status)) {
@@ -223,13 +293,13 @@ function traduz_status_matricula(string $status): string {
     <div class="content-grid">
       <div class="card">
         <h3>Pedidos de matrícula</h3>
-        <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
-          <div style="flex:1;min-width:180px;">
-            <label for="search_aluno" style="margin-bottom:4px;">Nome do aluno</label>
+        <div class="search-bar matriculas-filter-bar">
+          <div class="filter-field-grow-180">
+            <label for="search_aluno" class="filter-label-compact">Nome do aluno</label>
             <input type="search" id="search_aluno" placeholder="Pesquisar por nome…" oninput="filtrarMatriculas()">
           </div>
-          <div style="flex:1;min-width:180px;">
-            <label for="search_curso" style="margin-bottom:4px;">Curso</label>
+          <div class="filter-field-grow-180">
+            <label for="search_curso" class="filter-label-compact">Curso</label>
             <select id="search_curso" onchange="filtrarMatriculas()">
               <option value="">— Todos os cursos —</option>
               <?php foreach ($cursosFiltro as $cf): ?>
@@ -237,37 +307,43 @@ function traduz_status_matricula(string $status): string {
               <?php endforeach; ?>
             </select>
           </div>
-          <button type="button" onclick="limparPesquisa()" class="btn-sm" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:1px;">Limpar</button>
+          <button type="button" onclick="limparPesquisa()" class="btn-sm btn-neutral btn-align-bottom-alt">Limpar</button>
         </div>
-        <div id="sem-resultados" style="display:none;padding:20px;text-align:center;color:#888;">Nenhuma matrícula corresponde à pesquisa.</div>
-        <div style="overflow-x:auto;">
+        <div id="sem-resultados" class="empty-search-message padded">Nenhuma matrícula corresponde à pesquisa.</div>
+        <div class="overflow-x-auto">
           <table>
             <thead>
               <tr>
                 <th>Aluno</th>
+                <th>Curso</th>
                 <th>Estado</th>
+                <th>Aprovado por</th>
                 <th>Ações</th>
               </tr>
             </thead>
             <tbody>
-              <?php $count = 0; $rowIdx = 0; while ($r = $matriculas->fetch_assoc()): $count++; $rowIdx++;
-                $dataAluno = htmlspecialchars(strtolower(trim((string)($r['aluno_nome'] ?? $r['login']))));
-                $dataCurso = htmlspecialchars(strtolower((string)$r['Nome']));
+              <?php $count = 0; $rowIdx = 0; foreach ($matriculasAgrupadas as $alunoData): $count++; $rowIdx++;
+                $dataAluno = htmlspecialchars(strtolower(trim((string)$alunoData['nome'])));
+                $todosCursos = [];
+                foreach ($alunoData['matriculas'] as $matriculaItem) {
+                  $todosCursos[] = (string)$matriculaItem['curso_nome'];
+                }
+                $dataCurso = htmlspecialchars(strtolower(implode(' | ', array_unique($todosCursos))));
+                $cursosDoAlunoTxt = !empty($alunoData['cursos_matriculados'])
+                  ? implode(' | ', $alunoData['cursos_matriculados'])
+                  : 'Sem cursos aprovados';
+                $status = strtoupper((string)$alunoData['summary_status']);
+                $detailsId = 'matricula_' . $rowIdx;
+                $nomeVisivel = (string)$alunoData['nome'];
+                $badgeClass = match($status) {
+                    'APPROVED' => 'badge-approved',
+                    'CANCEL_PENDING' => 'badge-pending',
+                    'REJECTED' => 'badge-rejected',
+                    'CANCELLED' => 'badge-rejected',
+                    'CANCEL_REJECTED' => 'badge-rejected',
+                    default => 'badge-pending',
+                };
               ?>
-                <?php
-                  $status = strtoupper($r['status'] ?? 'PENDING');
-                  $detailsId = 'matricula_' . $rowIdx;
-                  $nomeAluno = trim((string)($r['aluno_nome'] ?? ''));
-                  $nomeVisivel = $nomeAluno !== '' ? $nomeAluno : $r['login'];
-                  $badgeClass = match($status) {
-                      'APPROVED' => 'badge-approved',
-                      'CANCEL_PENDING' => 'badge-pending',
-                      'REJECTED' => 'badge-rejected',
-                      'CANCELLED' => 'badge-rejected',
-                      'CANCEL_REJECTED' => 'badge-rejected',
-                      default => 'badge-pending',
-                  };
-                ?>
                 <tr class="matricula-row" data-aluno="<?= $dataAluno ?>" data-curso="<?= $dataCurso ?>" data-details="<?= $detailsId ?>">
                   <td data-label="Aluno">
                     <button type="button" class="aluno-toggle" onclick="toggleMatricula('<?= $detailsId ?>', this)">
@@ -275,86 +351,150 @@ function traduz_status_matricula(string $status): string {
                       <?= htmlspecialchars($nomeVisivel) ?>
                     </button>
                   </td>
+                  <td data-label="Curso"><?= htmlspecialchars((string)$alunoData['summary_curso']) ?></td>
                   <td data-label="Estado">
                     <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
-                    <div style="font-size:11px;color:#64748b;margin-top:4px;">
-                      Aprovado por: <?= htmlspecialchars($r['approved_by'] ?? '-') ?>
-                    </div>
+                  </td>
+                  <td data-label="Aprovado por">
+                    <?php if (!empty($alunoData['summary_aprovado_por']) && $alunoData['summary_aprovado_por'] !== '-'): ?>
+                      <a href="alunos_admin.php?q=<?= urlencode($alunoData['summary_aprovado_por']) ?>&open_login=<?= urlencode($alunoData['summary_aprovado_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                        <?= htmlspecialchars((string)$alunoData['summary_aprovado_por']) ?>
+                      </a>
+                    <?php else: ?>
+                      -
+                    <?php endif; ?>
                   </td>
                   <td data-label="Ações">
-                    <?php if ($status === 'PENDING'): ?>
-                      <form method="post" class="action-form" onsubmit="return confirmAction('Aprovar esta matrícula?')">
-                        <input type="hidden" name="action" value="approve">
-                        <input type="hidden" name="aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                        <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
-                        <textarea name="observacao" class="obs-field" placeholder="Observação (opcional)"></textarea>
-                        <button type="submit" class="action-btn action-btn-approve">Aprovar</button>
-                      </form>
-                      <form method="post" class="action-form" onsubmit="return confirmAction('Rejeitar esta matrícula?')">
-                        <input type="hidden" name="action" value="reject">
-                        <input type="hidden" name="aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                        <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
-                        <textarea name="observacao" class="obs-field" placeholder="Motivo da rejeição (opcional)"></textarea>
-                        <button type="submit" class="action-btn action-btn-reject">Rejeitar</button>
-                      </form>
-                    <?php elseif ($status === 'CANCEL_PENDING'): ?>
-                      <form method="post" class="action-form" onsubmit="return confirmAction('Aprovar o cancelamento desta matrícula?')">
-                        <input type="hidden" name="action" value="approve">
-                        <input type="hidden" name="aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                        <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
-                        <textarea name="observacao" class="obs-field" placeholder="Observação sobre o cancelamento (opcional)"></textarea>
-                        <button type="submit" class="action-btn action-btn-approve">Aprovar cancelamento</button>
-                      </form>
-                      <form method="post" class="action-form" onsubmit="return confirmAction('Rejeitar o cancelamento desta matrícula?')">
-                        <input type="hidden" name="action" value="reject">
-                        <input type="hidden" name="aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                        <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
-                        <textarea name="observacao" class="obs-field" placeholder="Motivo da rejeição do cancelamento (opcional)"></textarea>
-                        <button type="submit" class="action-btn action-btn-reject">Rejeitar cancelamento</button>
-                      </form>
-                    <?php elseif ($status === 'CANCEL_REJECTED'): ?>
-                      <form method="post" class="action-form action-form-inline" onsubmit="return confirmAction('Repor esta matrícula ao estado aprovado?')">
-                        <input type="hidden" name="action" value="restore_approved">
-                        <input type="hidden" name="aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                        <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
-                        <button type="submit" class="action-btn action-btn-approve">Repor matricula aprovada</button>
-                      </form>
-                    <?php endif; ?>
-                    <form method="post" class="action-form <?= $status === 'CANCEL_REJECTED' ? 'action-form-inline' : 'action-form-delete' ?>" onsubmit="return confirmAction('Eliminar esta matrícula? Esta ação não pode ser desfeita.')">
-                      <input type="hidden" name="del_curso" value="<?= (int)$r['ID'] ?>">
-                      <input type="hidden" name="del_aluno" value="<?= htmlspecialchars($r['login']) ?>">
-                      <button type="submit" class="action-btn action-btn-remove">Eliminar</button>
-                    </form>
+                    <button type="button" class="action-btn" onclick="toggleMatricula('<?= $detailsId ?>', null, 'manage')">Gerir</button>
                   </td>
                 </tr>
                 <tr id="<?= $detailsId ?>" class="details-row">
-                  <td colspan="3" class="details-cell">
+                  <td colspan="4" class="details-cell">
                     <div class="details-grid">
-                      <?php if (!empty($r['aluno_foto'])): ?>
-                      <div class="detail-item detail-photo-wrap" style="grid-column: 1 / -1;">
-                        <img class="detail-profile-photo" src="<?= htmlspecialchars($r['aluno_foto']) ?>" alt="Fotografia de perfil">
+                      <?php if (!empty($alunoData['foto'])): ?>
+                      <div class="detail-item detail-photo-wrap full-span aluno-identidade">
+                        <img class="detail-profile-photo" src="<?= htmlspecialchars((string)$alunoData['foto']) ?>" alt="Fotografia de perfil">
                       </div>
                       <?php endif; ?>
-                      <div class="detail-item"><strong>Login:</strong> <?= htmlspecialchars($r['login']) ?></div>
-                      <div class="detail-item"><strong>Nome:</strong> <?= htmlspecialchars($nomeVisivel) ?></div>
-                      <div class="detail-item"><strong>Email:</strong> <?= htmlspecialchars($r['aluno_email'] ?? '-') ?></div>
-                      <div class="detail-item"><strong>Telefone:</strong> <?= htmlspecialchars($r['aluno_telefone'] ?? '-') ?></div>
-                      <div class="detail-item" style="grid-column: 1 / -1;"><strong>Morada:</strong> <?= htmlspecialchars($r['aluno_morada'] ?? '-') ?></div>
-                      <div class="detail-item"><strong>Curso:</strong> <?= htmlspecialchars($r['Nome']) ?></div>
-                      <div class="detail-item"><strong>Data:</strong> <?= htmlspecialchars($r['data_matricula'] ?? '-') ?></div>
-                      <div class="detail-item"><strong>Revisto por:</strong> <?= htmlspecialchars($r['approved_by'] ?? '-') ?></div>
-                      <div class="detail-item"><strong>Revisto em:</strong> <?= htmlspecialchars($r['approved_at'] ?? '-') ?></div>
-                      <?php if (!empty($r['observacao'])): ?>
-                      <div class="detail-item" style="grid-column: 1 / -1;"><strong>Observação:</strong> <?= htmlspecialchars($r['observacao']) ?></div>
-                      <?php endif; ?>
+                      <div class="detail-item aluno-identidade"><strong>Login:</strong> <?= htmlspecialchars((string)$alunoData['login']) ?></div>
+                      <div class="detail-item aluno-identidade"><strong>Nome:</strong> <?= htmlspecialchars($nomeVisivel) ?></div>
+                      <div class="detail-item aluno-identidade"><strong>Email:</strong> <?= htmlspecialchars((string)$alunoData['email']) ?></div>
+                      <div class="detail-item aluno-identidade"><strong>Telefone:</strong> <?= htmlspecialchars((string)$alunoData['telefone']) ?></div>
+                      <div class="detail-item full-span aluno-identidade"><strong>Morada:</strong> <?= htmlspecialchars((string)$alunoData['morada']) ?></div>
+                      <div class="detail-item full-span">
+                        <strong>Matrículas do aluno:</strong>
+                        <div class="table-wrapper mt-8px">
+                          <table class="wide-table-min-720">
+                            <thead>
+                              <tr>
+                                <th>CURSO</th>
+                                <th>ESTADO</th>
+                                <th>DATA</th>
+                                <th>REVISTO POR</th>
+                                <th>DATA DE REVISÃO</th>
+                                <th>AÇÕES</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <?php foreach ($alunoData['matriculas'] as $matriculaItem):
+                                $statusItem = strtoupper((string)$matriculaItem['status']);
+                                $badgeClassItem = match($statusItem) {
+                                  'APPROVED' => 'badge-approved',
+                                  'CANCEL_PENDING' => 'badge-pending',
+                                  'REJECTED' => 'badge-rejected',
+                                  'CANCELLED' => 'badge-rejected',
+                                  'CANCEL_REJECTED' => 'badge-rejected',
+                                  default => 'badge-pending',
+                                };
+                              ?>
+                              <tr>
+                                <td><?= htmlspecialchars((string)$matriculaItem['curso_nome']) ?></td>
+                                <td>
+                                  <span class="badge <?= $badgeClassItem ?>"><?= htmlspecialchars(traduz_status_matricula($statusItem)) ?></span>
+                                  <?php if (!empty($matriculaItem['observacao'])): ?>
+                                  <div class="meta-detail-line"><?= htmlspecialchars((string)$matriculaItem['observacao']) ?></div>
+                                  <?php endif; ?>
+                                </td>
+                                <td><div style="white-space:nowrap;display:flex;align-items:center;justify-content:center;height:100%;"><?= htmlspecialchars((string)$matriculaItem['data_matricula']) ?></div></td>
+                                <td>
+                                  <?php
+                                    $approvedByLogin = $matriculaItem['approved_by'];
+                                    $approvedByNome = ($approvedByLogin && $approvedByLogin !== '-') ? nome_utilizador_por_login($conn, $approvedByLogin) : '-';
+                                  ?>
+                                  <div style="display:flex;align-items:center;justify-content:center;height:100%;">
+                                  <?php if ($approvedByNome !== '-' && !empty($approvedByLogin)): ?>
+                                    <a href="alunos_admin.php?q=<?= urlencode($approvedByLogin) ?>&open_login=<?= urlencode($approvedByLogin) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;white-space:nowrap;">
+                                      <?= htmlspecialchars($approvedByNome) ?>
+                                    </a>
+                                  <?php else: ?>
+                                    -
+                                  <?php endif; ?>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div style="white-space:nowrap;display:flex;align-items:center;justify-content:center;height:100%;">
+                                    <?= !empty($matriculaItem['approved_at']) ? htmlspecialchars((string)$matriculaItem['approved_at']) : '-' ?>
+                                  </div>
+                                </td>
+                                <td>
+                                  <?php if ($statusItem === 'PENDING'): ?>
+                                    <form method="post" class="action-form action-form-with-obs" onsubmit="return confirmAction('Aprovar esta matrícula?')">
+                                      <input type="hidden" name="action" value="approve">
+                                      <input type="hidden" name="aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                      <input type="hidden" name="curso_id" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                      <textarea name="observacao" class="obs-field" placeholder="Observação (opcional)"></textarea>
+                                      <button type="submit" class="action-btn action-btn-approve">Aprovar</button>
+                                    </form>
+                                    <form method="post" class="action-form action-form-with-obs" onsubmit="return confirmAction('Rejeitar esta matrícula?')">
+                                      <input type="hidden" name="action" value="reject">
+                                      <input type="hidden" name="aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                      <input type="hidden" name="curso_id" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                      <textarea name="observacao" class="obs-field" placeholder="Motivo da rejeição (opcional)"></textarea>
+                                      <button type="submit" class="action-btn action-btn-reject">Rejeitar</button>
+                                    </form>
+                                  <?php elseif ($statusItem === 'CANCEL_PENDING'): ?>
+                                    <form method="post" class="action-form action-form-with-obs" onsubmit="return confirmAction('Aprovar o cancelamento desta matrícula?')">
+                                      <input type="hidden" name="action" value="approve">
+                                      <input type="hidden" name="aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                      <input type="hidden" name="curso_id" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                      <textarea name="observacao" class="obs-field" placeholder="Observação sobre o cancelamento (opcional)"></textarea>
+                                      <button type="submit" class="action-btn action-btn-approve">Aprovar cancelamento</button>
+                                    </form>
+                                    <form method="post" class="action-form action-form-with-obs" onsubmit="return confirmAction('Rejeitar o cancelamento desta matrícula?')">
+                                      <input type="hidden" name="action" value="reject">
+                                      <input type="hidden" name="aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                      <input type="hidden" name="curso_id" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                      <textarea name="observacao" class="obs-field" placeholder="Motivo da rejeição do cancelamento (opcional)"></textarea>
+                                      <button type="submit" class="action-btn action-btn-reject">Rejeitar cancelamento</button>
+                                    </form>
+                                  <?php elseif ($statusItem === 'CANCEL_REJECTED'): ?>
+                                    <form method="post" class="action-form action-form-inline" onsubmit="return confirmAction('Repor esta matrícula ao estado aprovado?')">
+                                      <input type="hidden" name="action" value="restore_approved">
+                                      <input type="hidden" name="aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                      <input type="hidden" name="curso_id" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                      <button type="submit" class="action-btn action-btn-approve">Repor matricula aprovada</button>
+                                    </form>
+                                  <?php endif; ?>
+                                  <form method="post" class="action-form <?= $statusItem === 'CANCEL_REJECTED' ? 'action-form-inline' : 'action-form-delete' ?>" onsubmit="return confirmAction('Eliminar esta matrícula? Esta ação não pode ser desfeita.')">
+                                    <input type="hidden" name="del_curso" value="<?= (int)$matriculaItem['curso_id'] ?>">
+                                    <input type="hidden" name="del_aluno" value="<?= htmlspecialchars((string)$alunoData['login']) ?>">
+                                    <button type="submit" class="action-btn action-btn-remove">Eliminar</button>
+                                  </form>
+                                </td>
+                              </tr>
+                              <?php endforeach; ?>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   </td>
                 </tr>
-              <?php endwhile; ?>
+              <?php endforeach; ?>
 
               <?php if ($count === 0): ?>
                 <tr>
-                  <td colspan="3" style="padding:30px; text-align:center; color:#555;">Ainda não existem matrículas.</td>
+                  <td colspan="4" class="empty-row-cell">Ainda não existem matrículas.</td>
                 </tr>
               <?php endif; ?>
             </tbody>
@@ -383,12 +523,34 @@ function traduz_status_matricula(string $status): string {
   </div>
   <script>
     function confirmAction(msg) { return confirm(msg); }
-    function toggleMatricula(rowId, button) {
+    function toggleMatricula(rowId, button, mode = 'full') {
       const row = document.getElementById(rowId);
       if (!row) return;
+
+      const identidadeEls = row.querySelectorAll('.aluno-identidade');
+
+      const triggerNome = document.querySelector('tr.matricula-row[data-details="' + rowId + '"] .aluno-toggle');
       const isOpen = row.classList.contains('open');
-      row.classList.toggle('open', !isOpen);
-      button.classList.toggle('open', !isOpen);
+      const isManageMode = row.classList.contains('manage-only');
+      const wantsManageMode = mode === 'manage';
+
+      if (isOpen && isManageMode === wantsManageMode) {
+        row.classList.remove('open', 'manage-only');
+        row.style.display = 'none';
+        identidadeEls.forEach(el => { el.style.display = ''; });
+        if (triggerNome) triggerNome.classList.remove('open');
+        return;
+      }
+
+      row.classList.add('open');
+      if (wantsManageMode) {
+        row.classList.add('manage-only');
+      } else {
+        row.classList.remove('manage-only');
+      }
+      identidadeEls.forEach(el => { el.style.display = wantsManageMode ? 'none' : ''; });
+      row.style.display = 'table-row';
+      if (triggerNome) triggerNome.classList.add('open');
     }
     function filtrarMatriculas() {
       const termAluno = document.getElementById('search_aluno').value.toLowerCase().trim();

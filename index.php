@@ -19,6 +19,8 @@ $grupo_menu_class = strtolower((string)$grupo);
 $notificacoesAluno = [];
 $totalNotificacoes = 0;
 $notificacoesAdmin = [];
+$notificacoesAdminSistema = [];
+$perfilIncompleto = false;
 
 if (
   $_SERVER['REQUEST_METHOD'] === 'POST' &&
@@ -54,11 +56,22 @@ if (
     header('Location: index.php?notifications=open');
     exit;
   }
+
+  if ($grupo === 'ADMIN' && isset($_POST['remove_notificacao'])) {
+    $notificacaoId = (int)($_POST['remove_notificacao'] ?? 0);
+    if ($notificacaoId > 0) {
+      remover_notificacao_aluno($conn, $login, $notificacaoId);
+    }
+
+    header('Location: index.php?notifications=open');
+    exit;
+  }
 }
 
 function traduz_grupo_nome(string $grupo): string {
   return match ($grupo) {
-    'ADMIN' => 'Admin',
+    'ADMIN' => 'Administrador',
+    'GESTOR' => 'Gestor',
     'FUNCIONARIO' => 'Funcionário',
     default => 'Aluno',
   };
@@ -185,7 +198,31 @@ if ($grupo === 'ADMIN') {
     ];
   }
 
-  $totalNotificacoes = count($notificacoesAdmin);
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param('s', $login);
+  $stmt->execute();
+  $adminPerfil = $stmt->get_result()->fetch_assoc() ?: null;
+
+  if ($adminPerfil) {
+    $perfil = $adminPerfil;
+  }
+
+  $perfilIncompleto = !$adminPerfil || empty($adminPerfil['nome']) || empty($adminPerfil['email']) || empty($adminPerfil['telefone']) || empty($adminPerfil['morada']);
+
+  if ($perfilIncompleto && ((int)($hiddenAdminNotifs['perfilincompleto'] ?? -1) !== 1)) {
+    $notificacoesAdmin[] = [
+      'key' => 'perfilincompleto',
+      'total' => 1,
+      'titulo' => 'Perfil incompleto',
+      'mensagem' => 'Por favor, preenche o teu perfil com os dados necesários.',
+      'link' => 'perfil_admin.php',
+      'acao' => 'Preencher perfil',
+    ];
+  }
+
+  $notificacoesAdminSistema = listar_notificacoes_aluno($conn, $login);
+
+  $totalNotificacoes = count($notificacoesAdmin) + count($notificacoesAdminSistema);
 }
 
 $stmt = $conn->prepare("
@@ -266,7 +303,7 @@ $cursos_aluno = $stmt->get_result();
               <h3 class="section-title">Pendências administrativas</h3>
               <button type="button" class="notifications-close" onclick="this.closest('details').removeAttribute('open');">Fechar</button>
             </div>
-            <?php if ($notificacoesAdmin !== []): ?>
+            <?php if ($notificacoesAdmin !== [] || $notificacoesAdminSistema !== []): ?>
               <div class="notifications-list">
                 <?php foreach ($notificacoesAdmin as $item): ?>
                   <div class="notification-item notification-admin-item is-unread">
@@ -279,6 +316,19 @@ $cursos_aluno = $stmt->get_result();
                       <form method="post" class="notification-remove-form">
                         <input type="hidden" name="dismiss_admin_notificacao" value="<?= htmlspecialchars($item['key']) ?>">
                         <input type="hidden" name="dismiss_admin_total" value="<?= (int)$item['total'] ?>">
+                        <button type="submit" class="action-btn action-btn-remove notification-remove-btn">Remover notificação</button>
+                      </form>
+                    </div>
+                  </div>
+                <?php endforeach; ?>
+
+                <?php foreach ($notificacoesAdminSistema as $notificacao): ?>
+                  <div class="notification-item notification-admin-item<?= empty($notificacao['read_at']) ? ' is-unread' : ' is-read' ?>">
+                    <div class="notice-err"><?= htmlspecialchars((string)$notificacao['mensagem']) ?></div>
+                    <div class="notification-admin-actions">
+                      <a href="perfil_admin.php" class="action-link approve notification-action-link">Ver perfil admin</a>
+                      <form method="post" class="notification-remove-form">
+                        <input type="hidden" name="remove_notificacao" value="<?= (int)$notificacao['id'] ?>">
                         <button type="submit" class="action-btn action-btn-remove notification-remove-btn">Remover notificação</button>
                       </form>
                     </div>
@@ -301,15 +351,18 @@ $cursos_aluno = $stmt->get_result();
         <?php if ($grupo === 'ADMIN' || $grupo === 'ALUNO'): ?>
           <a href="plano_estudos.php">Plano de Estudos</a>
         <?php endif; ?>
-        <?php if (in_array(($_SESSION['user']['grupo_nome'] ?? ''), ['ALUNO', 'FUNCIONARIO'], true)): ?>
+        <?php if (in_array(($_SESSION['user']['grupo_nome'] ?? ''), ['ALUNO', 'FUNCIONARIO', 'GESTOR'], true)): ?>
           <a href="perfil.php">Perfil</a>
         <?php endif; ?>
         <?php if ($grupo === 'ADMIN'): ?>
+          <a href="perfil_admin.php">Perfil</a>
+          <a href="admin_criar_admin.php">Criar Conta Administrativa</a>
           <a href="alunos_admin.php">Utilizadores</a>
           <a href="cursos.php">Cursos</a>
           <a href="disciplinas.php">Disciplinas</a>
           <a href="admin_matriculas.php">Matrículas</a>
           <a href="pautas.php">Pautas</a>
+        <?php elseif ($grupo === 'GESTOR'): ?>
         <?php elseif ($grupo === 'FUNCIONARIO'): ?>
           <a href="admin_matriculas.php">Pedidos de Matrícula</a>
           <a href="pautas.php">Pautas de Avaliação</a>
@@ -319,6 +372,12 @@ $cursos_aluno = $stmt->get_result();
         <?php endif; ?>
       </div>
     </div>
+
+    <?php if ($grupo === 'ADMIN' && $perfilIncompleto): ?>
+    <div class="card">
+      <div class="notice-err">Precisas de completar o teu perfil de administrador antes de acederes às restantes funcionalidades.</div>
+    </div>
+    <?php endif; ?>
 
     <?php if ($grupo === 'ALUNO'): ?>
     <div class="card">
@@ -338,7 +397,7 @@ $cursos_aluno = $stmt->get_result();
           <?php endforeach; ?>
         </ul>
       <?php else: ?>
-        <p style="color:#999;">Não estás matriculado em nenhum curso.</p>
+        <p class="muted-empty-text">Não estás matriculado em nenhum curso.</p>
       <?php endif; ?>
     </div>
     <?php elseif ($grupo === 'FUNCIONARIO'): ?>
@@ -351,7 +410,7 @@ $cursos_aluno = $stmt->get_result();
         <?php if (!empty($perfil['foto_path'])): ?>
           <img class="profile-photo" src="<?= htmlspecialchars($perfil['foto_path']) ?>" alt="Fotografia de perfil">
         <?php endif; ?>
-        <?php if (($grupo === 'ALUNO' || $grupo === 'FUNCIONARIO') && (!empty($perfil['nome']) || !empty($perfil['email']) || !empty($perfil['telefone']) || !empty($perfil['morada']))): ?>
+        <?php if ($perfil && (!empty($perfil['nome']) || !empty($perfil['email']) || !empty($perfil['telefone']) || !empty($perfil['morada']))): ?>
           <strong>Nome:</strong> <?= htmlspecialchars($perfil['nome'] ?? '') ?><br>
           <strong>Email:</strong> <?= htmlspecialchars($perfil['email'] ?? '') ?><br>
           <strong>Telefone:</strong> <?= htmlspecialchars($perfil['telefone'] ?? '') ?><br>

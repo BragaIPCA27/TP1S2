@@ -295,6 +295,48 @@ body {
   margin-bottom: 14px;
 }
 
+/* Barra de filtros reutilizada: controla alinhamento horizontal dos filtros em desktop. */
+.cursos-filter-bar,
+.disciplinas-filter-bar,
+.plano-filter-bar,
+.matriculas-filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  align-items: flex-end;
+}
+
+/* Largura mínima dos blocos de filtros por contexto (evita quebra prematura). */
+.filter-field-grow-220 { flex: 1; min-width: 220px; }
+.filter-field-grow-200 { flex: 1; min-width: 200px; }
+.filter-field-grow-180 { flex: 1; min-width: 180px; }
+.filter-field-grow-170 { flex: 1; min-width: 170px; }
+
+/* Label compacta para filtros (substitui margin-bottom inline). */
+.filter-label-compact {
+  margin-bottom: 4px;
+}
+
+/* Agrupa botões de ação no mesmo bloco (ex.: editar curso). */
+.inline-actions-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Campo de pesquisa que ocupa o espaço restante no painel de utilizadores. */
+.search-input-flex {
+  flex: 1;
+}
+
+/* Linha expandida de descrição em tabelas (ex.: descrição do curso). */
+.description-expanded-content {
+  margin-top: 8px;
+  white-space: normal;
+}
+
 .field-stack {
   flex: 1;
   display: grid;
@@ -374,6 +416,32 @@ button:hover,
   margin-right: 6px;
 }
 
+/* Botões neutros (Limpar/Cancelar): controla cor alternativa sem inline style. */
+.btn-neutral,
+.action-btn-neutral {
+  background: linear-gradient(135deg, #64748b, #475569);
+}
+
+/* Ajuste fino de alinhamento vertical de botões dentro das barras de filtro. */
+.btn-align-bottom { margin-bottom: 0; }
+.btn-align-bottom-alt { margin-bottom: 1px; }
+
+/* Remove margem direita no último botão da linha de ações. */
+.no-right-margin {
+  margin-right: 0;
+}
+
+/* Botões em estilo link/ação que não devem ter border padrão (botões em formulários inline). */
+.action-btn-reset {
+  border: 0;
+  cursor: pointer;
+}
+
+/* Utilitário de crescimento em flex para botões lado a lado (50/50). */
+.grow-1 {
+  flex: 1;
+}
+
 .action-btn.edit,
 .btn-save,
 .clear-btn {
@@ -409,6 +477,36 @@ button:hover,
   box-shadow: 0 10px 22px rgba(13, 148, 136, 0.32);
 }
 
+.page-pautas .created-by-link,
+.page-cursos .submitted-by-link,
+.page-disciplinas .submitted-by-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 4px 10px rgba(30, 58, 138, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+
+
+.page-pautas .created-by-link:hover,
+.page-cursos .submitted-by-link:hover,
+.page-disciplinas .submitted-by-link:hover {
+  transform: translateY(-1px);
+  border-color: #93c5fd;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1d4ed8;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.2);
+}
+
 .cancel-link,
 .create-account,
 .link a,
@@ -429,6 +527,65 @@ button:hover,
 .page-alunos-admin .action-group {
   display: flex;
   flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Bloco de filtro por curso no admin de utilizadores (espaçamento e tipografia). */
+.page-alunos-admin .curso-filter-wrap {
+  margin-top: 10px;
+}
+
+.page-alunos-admin .admin-filter-label {
+  display: block;
+  color: #334155;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.page-alunos-admin .admin-filter-select {
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+
+/* Formulários inline e painel de rejeição de pedidos de curso. */
+.page-alunos-admin .inline-form {
+  display: inline;
+}
+
+.page-alunos-admin .reject-row-hidden {
+  display: none;
+}
+
+.page-alunos-admin .reject-cell-padding {
+  padding: 12px;
+}
+
+.page-alunos-admin .reject-form-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.page-alunos-admin .reject-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.page-alunos-admin .reject-actions-row {
+  display: flex;
   gap: 8px;
 }
 
@@ -462,6 +619,71 @@ button:hover,
 /* Tabelas, linhas e badges partilhadas por listas administrativas e académicas. */
 .table-wrapper {
   overflow-x: auto;
+}
+
+/* Wrappers com scroll horizontal explícito em secções de detalhe. */
+.overflow-x-auto {
+  overflow-x: auto;
+}
+
+/* Elemento de grelha que ocupa largura total em details-grid. */
+.full-span {
+  grid-column: 1 / -1;
+}
+
+/* Utilitário de margem superior pequena para blocos internos. */
+.mt-8px {
+  margin-top: 8px;
+}
+
+/* Tabela interna com largura mínima fixa para manter legibilidade. */
+.wide-table-min-720 {
+  width: 100%;
+  min-width: 720px;
+}
+
+/* Meta texto discreto (datas, aprovado por, observações curtas). */
+.meta-detail-line {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+.meta-detail-muted {
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Mensagens de vazio/sem resultados em listas e filtros. */
+.empty-filter-message {
+  display: none;
+  padding: 10px 0;
+  color: #888;
+}
+
+.empty-filter-message.small {
+  padding: 12px 0;
+}
+
+.empty-search-message {
+  display: none;
+  padding: 16px;
+  text-align: center;
+  color: #888;
+}
+
+.empty-search-message.padded {
+  padding: 20px;
+}
+
+.empty-row-cell {
+  padding: 30px;
+  text-align: center;
+  color: #555;
+}
+
+.muted-empty-text {
+  color: #999;
 }
 
 table,
@@ -1533,7 +1755,8 @@ tbody tr:hover td {
 }
 
 .page-index .nav-funcionario,
-.page-index .nav-aluno {
+.page-index .nav-aluno,
+.page-index .nav-gestor {
   grid-template-columns: repeat(2, minmax(240px, 1fr));
 }
 
@@ -1601,6 +1824,28 @@ tbody tr:hover td {
 
 .action-form-inline:last-of-type {
   margin-right: 0;
+}
+
+/* Na gestão de matrículas, cada botão fica ao lado da respetiva caixa de observação. */
+.page-admin-matriculas .action-form-with-obs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.page-admin-matriculas .action-form-with-obs .obs-field {
+  margin-bottom: 0;
+  max-width: none;
+  flex: 1;
+  order: 2;
+}
+
+.page-admin-matriculas .action-form-with-obs .action-btn {
+  width: auto;
+  margin-right: 0;
+  white-space: nowrap;
+  order: 1;
 }
 
 .page-perfil .form-field {
@@ -1686,6 +1931,22 @@ tbody tr:hover td {
   overflow: hidden;
   border: 2px solid #9bd8f0;
   background: #fff;
+}
+
+.page-perfil .profile-edit-form-section {
+  margin-top: 14px;
+}
+
+.page-perfil .danger-form {
+  margin-top: 12px;
+}
+
+.page-perfil .btn-danger {
+  background: #b42318;
+}
+
+.page-admin-criar-admin .create-admin-submit {
+  margin-top: 14px;
 }
 
 .page-perfil .crop-preview-canvas {
@@ -2266,6 +2527,16 @@ tbody tr:hover td {
     padding: 6px 8px;
     font-size: 11px;
   }
+
+  /* Em mobile, mantém legível: textarea em cima e botão em baixo. */
+  .page-admin-matriculas .action-form-with-obs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-admin-matriculas .action-form-with-obs .action-btn {
+    width: 100%;
+  }
 }
 
 /* Cartões de pautas e notas mostrados no perfil do aluno. */
@@ -2341,6 +2612,45 @@ tbody tr:hover td {
   display: table-row;
 }
 
+/* Na gestão de matrículas, o modo "Gerir" mostra só ações e oculta dados pessoais do aluno. */
+.page-admin-matriculas .details-row.manage-only .aluno-identidade {
+  display: none;
+}
+
+/* Comentários de aprovação/rejeição visíveis para o aluno na lista de matrículas. */
+.page-matriculas .matricula-decision-note {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.page-matriculas .matricula-decision-note strong {
+  color: #0f172a;
+}
+
+.page-matriculas .matricula-decision-note-muted {
+  color: #64748b;
+  font-style: italic;
+}
+
+.page-matriculas .matricula-decision-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* Anima apenas a seta do dropdown sem alterar o estilo visual existente do botão. */
+.page-admin-matriculas .aluno-chevron {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  transform: rotate(0deg);
+}
+
+.page-admin-matriculas .aluno-toggle.open .aluno-chevron {
+  transform: rotate(180deg);
+}
+
 /* Tabela hierárquica do plano de estudos com expansão por curso. */
 .page-plano-estudos .curso-row {
   background: #f8fbff;
@@ -2361,6 +2671,22 @@ tbody tr:hover td {
 
 .page-plano-estudos .search-bar .btn-sm {
   margin-bottom: 0 !important;
+}
+
+.page-pautas .pautas-filter-bar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  align-items: flex-end;
+}
+
+.page-pautas .pautas-filter-bar label {
+  margin-bottom: 4px;
+}
+
+.page-pautas .pautas-filter-bar .btn-sm {
+  margin-bottom: 0;
 }
 
 .page-plano-estudos .table-wrapper thead th {
@@ -2455,6 +2781,14 @@ tbody tr:hover td {
 .page-plano-estudos .disciplina-item-name {
   color: #1e293b;
   font-size: 14px;
+  flex: 1 1 auto;
+}
+
+.page-plano-estudos .disciplina-submetido-col {
+  min-width: 250px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .page-plano-estudos .semestre-action-col {
@@ -2488,6 +2822,12 @@ tbody tr:hover td {
 
 .page-plano-estudos .course-hint {
   font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.page-plano-estudos .course-submetido {
+  font-size: 11px;
   color: #64748b;
   font-weight: 600;
 }
@@ -2975,4 +3315,317 @@ tbody tr:hover td {
   .page-plano-estudos .semestre-action-col {
     width: 110px;
   }
+
+  .page-plano-estudos .disciplina-submetido-col {
+    min-width: 200px;
+    font-size: 11px;
+  }
+}
+
+/* Ajuste de alinhamento da coluna "Submetido por" */
+.page-plano-estudos table th:nth-child(2),
+.page-plano-estudos table td:nth-child(2) {
+    text-align: left !important;
+    padding-left: 16px !important;
+}
+/* Correção do alinhamento da coluna "Submetido por" */
+.page-plano-estudos table th:nth-child(2),
+.page-plano-estudos table td:nth-child(2) {
+    text-align: left !important;
+    padding-left: 16px !important;
+}
+
+/* Corrigir padding da primeira coluna — alinhar o botão com o cabeçalho */
+.page-plano-estudos .curso-row td:first-child {
+    padding: 13px 16px !important;
+}
+/* Correção do alinhamento da coluna "Data de Submissão" */
+.page-plano-estudos table th:nth-child(3),
+.page-plano-estudos table td:nth-child(3) {
+    text-align: left !important;
+    padding-left: 16px !important;
+}
+.page-plano-estudos .curso-panels-row > td {
+    width: 100% !important;
+    display: table-cell !important;
+}
+/* Cabeçalho das colunas */
+.page-plano-estudos .semestre-header {
+    display: grid !important;
+    grid-template-columns: 1fr 180px 160px 110px !important;
+    padding: 10px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    color: #475569;
+    border-bottom: 1px solid #dbe7f3;
+    margin-bottom: 6px;
+}
+
+/* Linhas das disciplinas */
+.page-plano-estudos .semestre-list .disciplina-row {
+    display: grid !important;
+    grid-template-columns: 1fr 180px 160px 110px !important;
+    align-items: center;
+    gap: 16px !important;
+    padding: 12px 8px !important;
+    white-space: nowrap !important;
+    justify-content: unset !important;
+}
+
+/* Colunas */
+.page-plano-estudos .disciplina-item-name {
+    white-space: nowrap !important;
+}
+
+.page-plano-estudos .disciplina-submetido-col {
+    text-align: left !important;
+}
+
+.page-plano-estudos .disciplina-data {
+    text-align: right !important;
+    padding-right: 12px !important;
+}
+
+.page-plano-estudos .semestre-action-col {
+    text-align: right !important;
+}
+/* ANULA o flex antigo que está a destruir o alinhamento */
+.page-plano-estudos .semestre-list .disciplina-row {
+    display: grid !important;
+    justify-content: unset !important;
+}
+.page-plano-estudos .semestre-header,
+.page-plano-estudos .semestre-list .disciplina-row {
+    grid-template-columns: 1fr 180px 160px 110px !important;
+    gap: 16px !important;
+    align-items: center;
+}
+/* FORÇAR GRID TAMBÉM NO MOBILE */
+@media (max-width: 640px) {
+
+  /* Ignora o display:block antigo */
+  .page-plano-estudos .semestre-list .disciplina-row {
+      display: grid !important;
+      grid-template-columns: 1fr 150px 140px 100px !important;
+      gap: 12px !important;
+      align-items: center !important;
+      white-space: nowrap !important;
+  }
+
+  /* Header igual à grid das linhas */
+  .page-plano-estudos .semestre-header {
+      display: grid !important;
+      grid-template-columns: 1fr 150px 140px 100px !important;
+      gap: 12px !important;
+  }
+
+  /* Corrigir comportamento da data */
+  .page-plano-estudos .disciplina-data {
+      text-align: right !important;
+  }
+
+  /* Evitar que AÇÃO desça de linha */
+  .page-plano-estudos .semestre-action-col {
+      text-align: right !important;
+      white-space: nowrap !important;
+  }
+}
+@media (max-width: 640px) {
+
+  /* Cabeçalho some no mobile */
+  .page-plano-estudos .semestre-header {
+      display: none !important;
+  }
+
+  /* Modo cartão compacto */
+  .page-plano-estudos .semestre-list .disciplina-row {
+      display: block !important;
+      padding: 14px 0 !important;
+      white-space: normal !important;
+  }
+
+  .page-plano-estudos .disciplina-submetido-col,
+  .page-plano-estudos .disciplina-data,
+  .page-plano-estudos .semestre-action-col {
+      display: inline-block !important;
+      margin-right: 10px !important;
+      white-space: nowrap !important;
+  }
+
+  .page-plano-estudos .disciplina-data {
+      float: right !important;
+  }
+}
+/* ===== HEADER DOS CURSOS — RESPONSIVE FIX ===== */
+@media (max-width: 640px) {
+
+  /* Forçar cabeçalho dos cursos a ficar em blocos legíveis */
+  .page-plano-estudos .table-wrapper thead th {
+      font-size: 11px !important;
+      white-space: normal !important;
+      line-height: 1.3 !important;
+      padding: 8px 6px !important;
+  }
+
+  /* Permitir quebra natural em 2 linhas */
+  .page-plano-estudos .table-wrapper thead th:nth-child(1),
+  .page-plano-estudos .table-wrapper thead th:nth-child(2),
+  .page-plano-estudos .table-wrapper thead th:nth-child(3) {
+      width: auto !important;
+      max-width: 140px !important;
+  }
+
+  /* Evitar que a tabela encolha demais */
+  .page-plano-estudos table {
+      min-width: 500px !important;
+  }
+
+  .page-plano-estudos .table-wrapper {
+      overflow-x: auto !important;
+  }
+}
+/* ===== AJUSTE DE ESPAÇAMENTO DOS BOTÕES ===== */
+.page-plano-estudos .disciplina-submetido-col a.submitted-by-link {
+    margin-right: 10px !important;
+}
+
+.page-plano-estudos .disciplina-data {
+    margin-left: 10px !important;
+}
+@media (max-width: 640px) {
+
+  /* Empurrar o conteúdo direito para dentro do ecrã */
+  .page-plano-estudos .disciplina-submetido-col,
+  .page-plano-estudos .disciplina-data,
+  .page-plano-estudos .semestre-action-col {
+      white-space: nowrap !important;
+  }
+
+  /* Manter espaçamento entre elementos */
+  .page-plano-estudos .semestre-list .disciplina-row {
+      padding-left: 6px !important;
+      padding-right: 6px !important;
+      gap: 14px !important;
+  }
+}
+/* ============================
+   TABELA REAL — DISCIPLINAS
+   ============================ */
+
+/* HEADER */
+.page-plano-estudos .semestre-header {
+    display: grid !important;
+    grid-template-columns: 1fr 180px 150px 120px;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    border-bottom: 1px solid #dbe7f3;
+    padding: 8px 6px;
+    color: #475569;
+}
+
+/* LINHAS DAS DISCIPLINAS COMO TABELA */
+.page-plano-estudos .semestre-list .disciplina-row {
+    display: grid !important;
+    grid-template-columns: 1fr 180px 150px 120px;
+    align-items: center;
+    padding: 12px 6px;
+    gap: 12px;
+    border-bottom: 1px solid #eef2f7;
+    white-space: nowrap;
+}
+
+.page-plano-estudos .disciplina-data {
+    text-align: right;
+    padding-right: 6px;
+}
+
+.page-plano-estudos .semestre-action-col {
+    text-align: right;
+}
+
+/* Espaçamento entre botões */
+.page-plano-estudos .disciplina-submetido-col a.submitted-by-link {
+    margin-right: 10px;
+}
+/* ============================
+   RESPONSIVO PARA TABELAS
+   ============================ */
+@media (max-width: 640px) {
+
+    /* A tabela das disciplinas deve permitir scroll lateral */
+    .page-plano-estudos .semestre-panel {
+        overflow-x: auto;
+    }
+
+    .page-plano-estudos .semestre-header,
+    .page-plano-estudos .semestre-list .disciplina-row {
+        min-width: 650px !important; /* largura mínima da tabela */
+    }
+
+    /* Evita compressão absurda no mobile */
+    .page-plano-estudos .disciplina-item-name {
+        white-space: nowrap !important;
+    }
+}
+.page-plano-estudos .semestre-action-col a.action-btn {
+    margin-left: 10px;
+}
+/* =========================================================
+   ✔ DISCIPLINAS — VERSÃO COMPACTA (MOBILE + DESKTOP)
+   ========================================================= */
+
+/* REMOVE headers das disciplinas (versão compacta não usa headers) */
+.page-plano-estudos .semestre-header {
+    display: none !important;
+}
+
+/* LINHA COMPACTA */
+.page-plano-estudos .semestre-list .disciplina-row {
+    display: block !important;
+    padding: 12px 10px !important;
+    border-bottom: 1px solid #e5e7eb;
+    white-space: normal !important;
+}
+
+/* Nome da disciplina */
+.page-plano-estudos .disciplina-item-name {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: block;
+}
+
+/* Linha dos meta-dados */
+.page-plano-estudos .disciplina-submetido-col,
+.page-plano-estudos .disciplina-data,
+.page-plano-estudos .semestre-action-col {
+    display: inline-block !important;
+    vertical-align: middle !important;
+    margin-right: 12px !important;
+    white-space: nowrap !important;
+}
+
+/* Botão azul (submetido por) */
+.page-plano-estudos .disciplina-submetido-col .submitted-by-link {
+    margin-right: 10px !important;
+}
+
+/* Data */
+.page-plano-estudos .disciplina-data {
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* Remover */
+.page-plano-estudos .semestre-action-col a.action-btn {
+    margin-left: 0 !important;
+}
+
+/* Espaçamento extra entre blocos */
+.page-plano-estudos .semestre-list .disciplina-row:not(:last-child) {
+    margin-bottom: 4px;
 }

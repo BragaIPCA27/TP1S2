@@ -5,6 +5,25 @@ require_group(['ADMIN','ALUNO']);
 $grupo = $_SESSION['user']['grupo_nome'] ?? '';
 $login = $_SESSION['user']['login'];
 
+$colSubmetidoPorPlano = $conn->query("SHOW COLUMNS FROM plano_estudos LIKE 'submetido_por'")->fetch_assoc();
+if (!$colSubmetidoPorPlano) {
+  $conn->query("ALTER TABLE plano_estudos ADD COLUMN submetido_por VARCHAR(20) DEFAULT NULL");
+}
+$colSubmetidoEmPlano = $conn->query("SHOW COLUMNS FROM plano_estudos LIKE 'submetido_em'")->fetch_assoc();
+if (!$colSubmetidoEmPlano) {
+  $conn->query("ALTER TABLE plano_estudos ADD COLUMN submetido_em DATETIME DEFAULT NULL");
+}
+
+$submetidoFallback = (string)($_SESSION['user']['login'] ?? 'gestor');
+$stmtFillPlano = $conn->prepare(
+  "UPDATE plano_estudos
+      SET submetido_por = CASE WHEN submetido_por IS NULL OR TRIM(submetido_por) = '' THEN ? ELSE submetido_por END,
+          submetido_em = CASE WHEN submetido_em IS NULL THEN NOW() ELSE submetido_em END
+    WHERE submetido_por IS NULL OR TRIM(submetido_por) = '' OR submetido_em IS NULL"
+);
+$stmtFillPlano->bind_param('s', $submetidoFallback);
+$stmtFillPlano->execute();
+
 $perfil = null;
 if ($grupo === 'ALUNO') {
   $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM alunos WHERE login = ? LIMIT 1");
@@ -24,6 +43,13 @@ if ($grupo === 'ALUNO') {
   }
 }
 
+if ($grupo === 'ADMIN') {
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfil = $stmt->get_result()->fetch_assoc() ?: [];
+}
+
 $erro = null;
 $ok = null;
 if (isset($_GET['error'])) {
@@ -37,11 +63,26 @@ if (isset($_GET['success'])) {
     }
 }
 
+function formatar_data_hora_curta(?string $valor): string {
+  $raw = trim((string)$valor);
+  if ($raw === '') {
+    return '-';
+  }
+
+  $ts = strtotime($raw);
+  if ($ts === false) {
+    return $raw;
+  }
+
+  return date('d/m/Y H:i', $ts);
+}
+
 // Para ADMIN, mostrar todo o plano
 // Para ALUNO, mostrar apenas dos cursos em que está matriculado
 if ($grupo === 'ADMIN') {
   $plano = $conn->query("
-    SELECT p.CURSOS AS curso_id, p.DISCIPLINA AS disciplina_id, COALESCE(p.semestre, 1) AS semestre,
+      SELECT p.CURSOS AS curso_id, p.DISCIPLINA AS disciplina_id, COALESCE(p.semestre, 1) AS semestre,
+        p.submetido_por, p.submetido_em,
            c.Nome AS curso, d.Nome_disc AS disciplina
     FROM plano_estudos p
     JOIN cursos c ON c.ID = p.CURSOS
@@ -51,7 +92,8 @@ if ($grupo === 'ADMIN') {
 } else {
   // ALUNO: só mostra plano dos cursos em que está matriculado
   $stmt = $conn->prepare("
-    SELECT p.CURSOS AS curso_id, p.DISCIPLINA AS disciplina_id, COALESCE(p.semestre, 1) AS semestre,
+      SELECT p.CURSOS AS curso_id, p.DISCIPLINA AS disciplina_id, COALESCE(p.semestre, 1) AS semestre,
+        p.submetido_por, p.submetido_em,
            c.Nome AS curso, d.Nome_disc AS disciplina
     FROM plano_estudos p
     JOIN cursos c ON c.ID = p.CURSOS
@@ -164,9 +206,9 @@ if ($grupo === 'ADMIN') {
       <div class="card">
         <div class="table-section">
           <h3><?= $grupo === 'ADMIN' ? 'Disciplinas por Curso' : 'Disciplinas dos teus Cursos' ?></h3>
-          <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
-            <div style="flex:1;min-width:200px;">
-              <label for="search_plano_curso" style="margin-bottom:4px;">Filtrar por curso</label>
+          <div class="search-bar plano-filter-bar">
+            <div class="filter-field-grow-200">
+              <label for="search_plano_curso" class="filter-label-compact">Filtrar por curso</label>
               <select id="search_plano_curso" onchange="filtrarPlano()">
                 <option value="">— Todos os cursos —</option>
                 <?php $cursos_list->data_seek(0); while ($cl = $cursos_list->fetch_assoc()): ?>
@@ -174,8 +216,8 @@ if ($grupo === 'ADMIN') {
                 <?php endwhile; $cursos_list->data_seek(0); ?>
               </select>
             </div>
-            <div style="flex:1;min-width:200px;">
-              <label for="search_plano_disc" style="margin-bottom:4px;">Filtrar por disciplina</label>
+            <div class="filter-field-grow-200">
+              <label for="search_plano_disc" class="filter-label-compact">Filtrar por disciplina</label>
               <select id="search_plano_disc" onchange="filtrarPlano()">
                 <option value="">— Todas as disciplinas —</option>
                 <?php $disc_list->data_seek(0); while ($dl = $disc_list->fetch_assoc()): ?>
@@ -183,22 +225,24 @@ if ($grupo === 'ADMIN') {
                 <?php endwhile; $disc_list->data_seek(0); ?>
               </select>
             </div>
-            <div style="flex:1;min-width:170px;">
-              <label for="search_plano_sem" style="margin-bottom:4px;">Filtrar por semestre</label>
+            <div class="filter-field-grow-170">
+              <label for="search_plano_sem" class="filter-label-compact">Filtrar por semestre</label>
               <select id="search_plano_sem" onchange="filtrarPlano()">
                 <option value="">— Todos os semestres —</option>
                 <option value="1">1.º semestre</option>
                 <option value="2">2.º semestre</option>
               </select>
             </div>
-            <button type="button" onclick="document.getElementById('search_plano_curso').value='';document.getElementById('search_plano_disc').value='';document.getElementById('search_plano_sem').value='';filtrarPlano();" class="btn-sm" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:0;">Limpar</button>
+            <button type="button" onclick="document.getElementById('search_plano_curso').value='';document.getElementById('search_plano_disc').value='';document.getElementById('search_plano_sem').value='';filtrarPlano();" class="btn-sm btn-neutral btn-align-bottom">Limpar</button>
           </div>
-          <div id="sem-resultados-plano" style="display:none;padding:16px;text-align:center;color:#888;">Nenhum resultado encontrado.</div>
+          <div id="sem-resultados-plano" class="empty-search-message">Nenhum resultado encontrado.</div>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Cursos e disciplinas</th>
+                  <th style="min-width:340px;text-align:left;padding-left:0.5em;">Cursos e disciplinas</th>
+                  <th style="min-width:200px;text-align:left;white-space:nowrap;">Submetido por</th>
+                  <th style="min-width:170px;text-align:left;white-space:nowrap;">Data de Submissão</th>
                 </tr>
               </thead>
               <tbody>
@@ -212,11 +256,20 @@ if ($grupo === 'ADMIN') {
                     $cursosPlano[$cursoId] = [
                       'curso' => (string)$r['curso'],
                       'curso_nome_lower' => strtolower((string)$r['curso']),
+                      'submetido_por' => nome_utilizador_por_login($conn, (string)($r['submetido_por'] ?? '')),
+                      'submetido_em' => (string)($r['submetido_em'] ?? ''),
                       'semestres' => [
                         1 => [],
                         2 => [],
                       ],
                     ];
+                  }
+
+                  $cursoSubmetidoEmAtual = (string)$cursosPlano[$cursoId]['submetido_em'];
+                  $submetidoEmLinha = (string)($r['submetido_em'] ?? '');
+                  if ($submetidoEmLinha !== '' && ($cursoSubmetidoEmAtual === '' || strtotime($submetidoEmLinha) > strtotime($cursoSubmetidoEmAtual))) {
+                    $cursosPlano[$cursoId]['submetido_em'] = $submetidoEmLinha;
+                    $cursosPlano[$cursoId]['submetido_por'] = nome_utilizador_por_login($conn, (string)($r['submetido_por'] ?? ''));
                   }
 
                   $cursosPlano[$cursoId]['semestres'][$semestreNum][] = [
@@ -225,6 +278,8 @@ if ($grupo === 'ADMIN') {
                     'disciplina' => (string)$r['disciplina'],
                     'disciplina_lower' => strtolower((string)$r['disciplina']),
                     'semestre' => $semestreNum,
+                    'submetido_por' => nome_utilizador_por_login($conn, (string)($r['submetido_por'] ?? '')),
+                    'submetido_em' => (string)($r['submetido_em'] ?? '-'),
                   ];
                 }
 
@@ -249,25 +304,78 @@ if ($grupo === 'ADMIN') {
                           <span class="course-chevron">▼</span>
                         </button>
                       </td>
-                    </tr>
-                    <tr class="curso-panels-row" id="curso-panels-<?= $curso_index ?>">
                       <td>
+                        <?php if (!empty($cursoData['submetido_por']) && $cursoData['submetido_por'] !== '-'): ?>
+                          <a href="alunos_admin.php?q=<?= urlencode($cursoData['submetido_por']) ?>&open_login=<?= urlencode($cursoData['submetido_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                            <?= htmlspecialchars($cursoData['submetido_por']) ?>
+                          </a>
+                        <?php else: ?>
+                          -
+                        <?php endif; ?>
+                      </td>
+                      <td>
+                        <?= htmlspecialchars(formatar_data_hora_curta((string)($cursoData['submetido_em'] ?? '-'))) ?>
+                      </td>
+                    </tr>
+                   <tr class="curso-panels-row" id="curso-panels-<?= $curso_index ?>">
+                      <td colspan="3">
                         <div class="semestres-grid">
                           <?php foreach ([1, 2] as $semestreNum): ?>
                             <?php $disciplinasSemestre = $cursoData['semestres'][$semestreNum] ?? []; ?>
                             <section class="semestre-panel semestre-panel-<?= $semestreNum ?>" data-semestre-panel="<?= $semestreNum ?>">
                               <h4><?= $semestreNum ?>.º semestre</h4>
+                            <div class="semestre-header">
+                                    <span class="col-disciplina">Disciplina</span>
+                                    <span class="col-submetido">Submetido por</span>
+                                    <span class="col-data">Data</span>
+                                    <span class="col-acao">Ação</span>
+                                </div>
                               <?php if ($disciplinasSemestre !== []): ?>
                                 <ul class="semestre-list" aria-label="<?= $semestreNum ?>.º semestre">
                                   <?php foreach ($disciplinasSemestre as $disc): ?>
-                                    <li class="disciplina-row curso-<?= $curso_index ?> semestre-disc-<?= $semestreNum ?>" data-disc-nome="<?= htmlspecialchars($disc['disciplina_lower']) ?>" data-disc-label="<?= htmlspecialchars($disc['disciplina']) ?>" data-semestre="<?= $semestreNum ?>">
-                                      <span class="disciplina-item-name"><?= htmlspecialchars($disc['disciplina']) ?></span>
-                                      <?php if ($grupo === 'ADMIN'): ?>
-                                        <span class="semestre-action-col">
-                                          <a class="action-btn" href="inserir.php?del_plano_curso=<?= (int)$disc['curso_id'] ?>&del_plano_disciplina=<?= (int)$disc['disciplina_id'] ?>" onclick="return confirm('Tem a certeza que deseja remover este vínculo?')">Remover</a>
-                                        </span>
-                                      <?php endif; ?>
-                                    </li>
+                                   <li class="disciplina-row curso-<?= $curso_index ?> semestre-disc-<?= $semestreNum ?>"
+    data-disc-nome="<?= htmlspecialchars($disc['disciplina_lower']) ?>"
+    data-disc-label="<?= htmlspecialchars($disc['disciplina']) ?>"
+    data-semestre="<?= $semestreNum ?>">
+
+    <!-- 1. COLUNA: DISCIPLINA -->
+    <span class="disciplina-item-name">
+        <?= htmlspecialchars($disc['disciplina']) ?>
+    </span>
+
+    <!-- 2. COLUNA: SUBMETIDO POR -->
+    <span class="disciplina-submetido-col">
+        <?php if (!empty($disc['submetido_por']) && $disc['submetido_por'] !== '-'): ?>
+            <a href="alunos_admin.php?q=<?= urlencode($disc['submetido_por']) ?>&open_login=<?= urlencode($disc['submetido_por']) ?>"
+               class="submitted-by-link"
+               style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
+                      border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+                      color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;
+                      box-shadow:0 4px 10px rgba(30,58,138,0.12);
+                      transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                <?= htmlspecialchars($disc['submetido_por']) ?>
+            </a>
+        <?php else: ?>
+            -
+        <?php endif; ?>
+    </span>
+
+    <!-- 3. COLUNA: DATA -->
+    <span class="disciplina-data">
+        <?= htmlspecialchars(formatar_data_hora_curta((string)$disc['submetido_em'])) ?>
+    </span>
+
+    <!-- 4. COLUNA: AÇÃO -->
+    <?php if ($grupo === 'ADMIN'): ?>
+        <span class="semestre-action-col">
+            <a class="action-btn"
+               href="inserir.php?del_plano_curso=<?= (int)$disc['curso_id'] ?>&del_plano_disciplina=<?= (int)$disc['disciplina_id'] ?>"
+               onclick="return confirm('Tem a certeza que deseja remover este vínculo?')">
+               Remover
+            </a>
+        </span>
+    <?php endif; ?>
+</li>
                                   <?php endforeach; ?>
                                 </ul>
                               <?php else: ?>
@@ -293,12 +401,13 @@ if ($grupo === 'ADMIN') {
           <?php if (!empty($perfil['foto_path'])): ?>
             <img class="profile-photo" src="<?= htmlspecialchars($perfil['foto_path']) ?>" alt="Fotografia de perfil">
           <?php endif; ?>
-          <?php if ($grupo === 'ALUNO' && (!empty($perfil['nome']) || !empty($perfil['email']) || !empty($perfil['telefone']) || !empty($perfil['morada']))): ?>
+          <?php if ($perfil && (!empty($perfil['nome']) || !empty($perfil['email']) || !empty($perfil['telefone']) || !empty($perfil['morada']))): ?>
             <strong>Nome:</strong> <?= htmlspecialchars($perfil['nome'] ?? '') ?><br>
             <strong>Email:</strong> <?= htmlspecialchars($perfil['email'] ?? '') ?><br>
             <strong>Telefone:</strong> <?= htmlspecialchars($perfil['telefone'] ?? '') ?><br>
             <strong>Morada:</strong> <?= htmlspecialchars($perfil['morada'] ?? '') ?><br>
           <?php endif; ?>
+          <strong>Tipo de utilizador:</strong> <?= htmlspecialchars($grupo === 'ADMIN' ? 'Administrador' : 'Aluno') ?><br>
           <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?>
         </div>
       </div>

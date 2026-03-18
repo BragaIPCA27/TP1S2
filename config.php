@@ -55,7 +55,7 @@ function ensure_schema(mysqli $conn): void {
 
     $done = true;
 
-    $gruposNecessarios = ['ADMIN', 'ALUNO', 'FUNCIONARIO'];
+    $gruposNecessarios = ['ADMIN', 'ALUNO', 'FUNCIONARIO', 'GESTOR'];
     foreach ($gruposNecessarios as $grupoNome) {
         $stmt = $conn->prepare("SELECT ID FROM grupos WHERE GRUPO = ? LIMIT 1");
         $stmt->bind_param("s", $grupoNome);
@@ -140,6 +140,23 @@ function ensure_schema(mysqli $conn): void {
     $perfilFoto = $conn->query("SHOW COLUMNS FROM perfil_pedidos LIKE 'foto_path'")->fetch_assoc();
     if (!$perfilFoto) {
         $conn->query("ALTER TABLE perfil_pedidos ADD COLUMN foto_path VARCHAR(255) DEFAULT NULL AFTER morada");
+    }
+
+    $adminPerfisTable = $conn->query("SHOW TABLES LIKE 'admin_perfis'")->fetch_assoc();
+    if (!$adminPerfisTable) {
+        $conn->query(
+            "CREATE TABLE admin_perfis (
+                login VARCHAR(20) NOT NULL,
+                nome VARCHAR(120) NOT NULL,
+                email VARCHAR(120) DEFAULT NULL,
+                telefone VARCHAR(30) DEFAULT NULL,
+                morada VARCHAR(200) DEFAULT NULL,
+                foto_path VARCHAR(255) DEFAULT NULL,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (login),
+                CONSTRAINT fk_admin_perfis_users FOREIGN KEY (login) REFERENCES users (login) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+        );
     }
 
         $perfilObsNome = $conn->query("SHOW COLUMNS FROM perfil_pedidos LIKE 'obs_nome'")->fetch_assoc();
@@ -302,11 +319,55 @@ function is_logged_in(): bool {
     return isset($_SESSION['user']);
 }
 
+function admin_profile_is_complete(mysqli $conn, string $login): bool {
+    $stmt = $conn->prepare("SELECT nome, email, telefone, morada FROM admin_perfis WHERE login = ? LIMIT 1");
+    $stmt->bind_param('s', $login);
+    $stmt->execute();
+    $perfil = $stmt->get_result()->fetch_assoc();
+
+    if (!$perfil) {
+        return false;
+    }
+
+    return trim((string)($perfil['nome'] ?? '')) !== ''
+        && trim((string)($perfil['email'] ?? '')) !== ''
+        && trim((string)($perfil['telefone'] ?? '')) !== ''
+        && trim((string)($perfil['morada'] ?? '')) !== '';
+}
+
+function enforce_admin_profile_completion(mysqli $conn): void {
+    if (!is_logged_in()) {
+        return;
+    }
+
+    $grupo = $_SESSION['user']['grupo_nome'] ?? '';
+    if ($grupo !== 'ADMIN') {
+        return;
+    }
+
+    $login = (string)($_SESSION['user']['login'] ?? '');
+    if ($login === '' || admin_profile_is_complete($conn, $login)) {
+        return;
+    }
+
+    $currentPage = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+    $allowPages = ['perfil_admin.php', 'index.php', 'logout.php'];
+    if (in_array($currentPage, $allowPages, true)) {
+        return;
+    }
+
+    header('Location: perfil_admin.php?complete=1');
+    exit;
+}
+
 function require_login(): void {
     if (!is_logged_in()) {
         header('Location: frontpage.php');
         exit;
     }
+
+    global $conn;
+    enforce_admin_profile_completion($conn);
 }
 
 function require_group(array $allowed): void {
@@ -474,6 +535,38 @@ function remover_notificacao_aluno(mysqli $conn, string $login, int $notificacao
     );
     $stmt->bind_param('is', $notificacaoId, $login);
     $stmt->execute();
+}
+
+function nome_utilizador_por_login(mysqli $conn, ?string $login): string {
+    $login = trim((string)$login);
+    if ($login === '') {
+        return '-';
+    }
+
+    static $cache = [];
+    if (isset($cache[$login])) {
+        return $cache[$login];
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT COALESCE(NULLIF(a.nome, ''), NULLIF(ap.nome, ''), u.login) AS nome
+           FROM users u
+      LEFT JOIN alunos a ON a.login = u.login
+      LEFT JOIN admin_perfis ap ON ap.login = u.login
+          WHERE u.login = ?
+          LIMIT 1"
+    );
+    $stmt->bind_param('s', $login);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    $nome = trim((string)($row['nome'] ?? ''));
+    if ($nome === '') {
+        $nome = $login;
+    }
+
+    $cache[$login] = $nome;
+    return $nome;
 }
 
 function logo_asset_path(): string {

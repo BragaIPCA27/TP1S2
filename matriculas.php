@@ -284,6 +284,8 @@ if ($grupo === 'ADMIN') {
                   <?php endif; ?>
                   <th>Data de Matrícula</th>
                   <th>Estado</th>
+                  <th>Aprovado por (utilizador)</th>
+                  <th>Data de Aprovação</th>
                   <th>Ações</th>
                 </tr>
               </thead>
@@ -293,6 +295,8 @@ if ($grupo === 'ADMIN') {
                 while($r = $meus->fetch_assoc()): 
                   $count++;
                   $status = strtoupper($r['status'] ?? 'APPROVED');
+                  $decididoPorLogin = trim((string)($r['approved_by'] ?? ''));
+                  $decididoPorNome = $decididoPorLogin !== '' ? nome_utilizador_por_login($conn, $decididoPorLogin) : '-';
                   $statusClass = match($status) {
                     'APPROVED' => 'approved',
                     'CANCEL_PENDING' => 'pending',
@@ -311,8 +315,22 @@ if ($grupo === 'ADMIN') {
                     <td data-label="Estado">
                       <span class="status-pill <?= $statusClass ?>\"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
                       <?php if ($grupo !== 'ADMIN' && !empty($r['observacao'])): ?>
-                        <div style="font-size:11px;color:#64748b;margin-top:4px;"><?= htmlspecialchars($r['observacao']) ?></div>
+                        <div class="matricula-decision-note"><strong>Comentário:</strong> <?= htmlspecialchars((string)$r['observacao']) ?></div>
+                      <?php elseif ($grupo !== 'ADMIN' && in_array($status, ['APPROVED', 'REJECTED', 'CANCELLED', 'CANCEL_REJECTED'], true)): ?>
+                        <div class="matricula-decision-note matricula-decision-note-muted">Sem comentário associado à decisão.</div>
                       <?php endif; ?>
+                    </td>
+                    <td data-label="Aprovado por (utilizador)">
+                      <?php if (!empty($r['approved_by']) && $r['approved_by'] !== '-'): ?>
+                        <a href="alunos_admin.php?q=<?= urlencode($r['approved_by']) ?>&open_login=<?= urlencode($r['approved_by']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                          <?= htmlspecialchars($decididoPorNome) ?>
+                        </a>
+                      <?php else: ?>
+                        -
+                      <?php endif; ?>
+                    </td>
+                    <td data-label="Data de Aprovação">
+                      <?= !empty($r['approved_at']) ? htmlspecialchars((string)$r['approved_at']) : '-' ?>
                     </td>
                     <td data-label="Ações">
                       <?php if ($grupo === 'ADMIN'): ?>

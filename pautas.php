@@ -95,7 +95,7 @@ $perfil = null;
 
 function traduz_grupo_nome(string $grupo): string {
   return match ($grupo) {
-    'ADMIN' => 'Admin',
+    'ADMIN' => 'Administrador',
     'FUNCIONARIO' => 'Funcionário',
     default => 'Aluno',
   };
@@ -117,6 +117,13 @@ if ($grupo === 'ALUNO' || $grupo === 'FUNCIONARIO') {
       $perfil['foto_path'] = $perfilFotoAprovada['foto_path'];
     }
   }
+}
+
+if ($grupo === 'ADMIN') {
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfil = $stmt->get_result()->fetch_assoc() ?: [];
 }
 
 $anos_letivos = [];
@@ -734,6 +741,25 @@ foreach ($pautas as $pautaItem) {
 }
 asort($cursosFiltro, SORT_NATURAL | SORT_FLAG_CASE);
 
+$tiposAvaliacaoFiltro = [];
+foreach ($pautas as $pautaItem) {
+  $tipoFiltroValor = strtolower((string)($pautaItem['tipo_avaliacao'] ?? 'Continua'));
+  if ($tipoFiltroValor === '') {
+    continue;
+  }
+  $tiposAvaliacaoFiltro[$tipoFiltroValor] = $tipoFiltroValor === 'exame' ? 'Exame' : 'Contínua';
+}
+
+$anosLetivosFiltro = [];
+foreach ($pautas as $pautaItem) {
+  $anoLetivoValor = trim((string)($pautaItem['ano_letivo'] ?? ''));
+  if ($anoLetivoValor === '') {
+    continue;
+  }
+  $anosLetivosFiltro[$anoLetivoValor] = $anoLetivoValor;
+}
+krsort($anosLetivosFiltro, SORT_NATURAL);
+
 $pautasPorEpoca = [];
 foreach ($pautas as $pautaItem) {
   $ep = (string)($pautaItem['epoca'] ?? 'Normal');
@@ -750,8 +776,45 @@ foreach ($pautas as $pautaItem) {
   $pautasPorEpoca[$chave]['pautas'][] = $pautaItem;
 }
 
+foreach ($pautasPorEpoca as &$grupoPautas) {
+  usort($grupoPautas['pautas'], static function (array $a, array $b): int {
+    $cmpSemestre = ((int)($a['semestre'] ?? 0)) <=> ((int)($b['semestre'] ?? 0));
+    if ($cmpSemestre !== 0) {
+      return $cmpSemestre;
+    }
+
+    $cmpCurso = strcasecmp((string)($a['curso_nome'] ?? ''), (string)($b['curso_nome'] ?? ''));
+    if ($cmpCurso !== 0) {
+      return $cmpCurso;
+    }
+
+    return strcmp((string)($a['ano_letivo'] ?? ''), (string)($b['ano_letivo'] ?? ''));
+  });
+}
+unset($grupoPautas);
+
 // Lista de épocas para filtro
 $ordemEpocas = ['Normal', 'Recurso', 'Especial'];
+
+// Ordenar blocos para mostrar primeiro avaliação contínua e depois exames por época.
+$ordemTipo = ['Continua' => 1, 'Exame' => 2];
+$ordemEpocaMap = array_flip($ordemEpocas);
+uasort($pautasPorEpoca, static function (array $a, array $b) use ($ordemTipo, $ordemEpocaMap): int {
+  $tipoA = (string)($a['tipo_avaliacao'] ?? 'Continua');
+  $tipoB = (string)($b['tipo_avaliacao'] ?? 'Continua');
+
+  $pesoTipoA = $ordemTipo[$tipoA] ?? 99;
+  $pesoTipoB = $ordemTipo[$tipoB] ?? 99;
+  if ($pesoTipoA !== $pesoTipoB) {
+    return $pesoTipoA <=> $pesoTipoB;
+  }
+
+  $epA = (string)($a['epoca'] ?? 'Normal');
+  $epB = (string)($b['epoca'] ?? 'Normal');
+  $pesoEpA = $ordemEpocaMap[$epA] ?? 99;
+  $pesoEpB = $ordemEpocaMap[$epB] ?? 99;
+  return $pesoEpA <=> $pesoEpB;
+});
 
 $pautasPermitidas = [];
 foreach ($pautas as $pautaItem) {
@@ -775,7 +838,7 @@ if ($pauta_aberta > 0) {
            FROM pauta_notas pn
        LEFT JOIN alunos a ON a.login = pn.login
            WHERE pn.pauta_id = ? AND pn.login = ?
-           ORDER BY pn.login"
+           ORDER BY COALESCE(NULLIF(a.nome, ''), pn.login), pn.login"
       );
       $ns->bind_param("is", $pauta_aberta, $login);
     } else {
@@ -785,7 +848,7 @@ if ($pauta_aberta > 0) {
            FROM pauta_notas pn
        LEFT JOIN alunos a ON a.login = pn.login
            WHERE pn.pauta_id = ?
-           ORDER BY pn.login"
+           ORDER BY COALESCE(NULLIF(a.nome, ''), pn.login), pn.login"
       );
       $ns->bind_param("i", $pauta_aberta);
     }
@@ -916,7 +979,7 @@ if ($pauta_aberta > 0) {
         <?php if (empty($pautas)): ?>
           <p class="empty-state">Ainda não foram criadas pautas.</p>
         <?php else: ?>
-        <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
+        <div class="search-bar pautas-filter-bar">
           <div style="flex:1;min-width:220px;">
             <label for="search_pautas_curso" style="margin-bottom:4px;">Filtrar por curso</label>
             <select id="search_pautas_curso" onchange="filtrarPautas()">
@@ -927,6 +990,32 @@ if ($pauta_aberta > 0) {
             </select>
           </div>
           <div style="min-width:220px;">
+            <label for="search_pautas_ano_letivo" style="margin-bottom:4px;">Filtrar por ano letivo</label>
+            <select id="search_pautas_ano_letivo" onchange="filtrarPautas()">
+              <option value="">- Todos os anos -</option>
+              <?php foreach ($anosLetivosFiltro as $anoLetivoValor => $anoLetivoLabel): ?>
+                <option value="<?= htmlspecialchars($anoLetivoValor) ?>"><?= htmlspecialchars($anoLetivoLabel) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div style="min-width:220px;">
+            <label for="search_pautas_semestre" style="margin-bottom:4px;">Filtrar por semestre</label>
+            <select id="search_pautas_semestre" onchange="filtrarPautas()">
+              <option value="">- Todos os semestres -</option>
+              <option value="1">1.º semestre</option>
+              <option value="2">2.º semestre</option>
+            </select>
+          </div>
+          <div style="min-width:220px;">
+            <label for="search_pautas_tipo" style="margin-bottom:4px;">Filtrar por Avaliação</label>
+            <select id="search_pautas_tipo" onchange="toggleEpocaFiltroField();filtrarPautas()">
+              <option value="">- Todos os tipos -</option>
+              <?php foreach ($tiposAvaliacaoFiltro as $tipoValor => $tipoLabel): ?>
+                <option value="<?= htmlspecialchars($tipoValor) ?>"><?= htmlspecialchars($tipoLabel) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div id="search_pautas_epoca_wrap" style="min-width:220px;display:none;">
             <label for="search_pautas_epoca" style="margin-bottom:4px;">Filtrar por época</label>
             <select id="search_pautas_epoca" onchange="filtrarPautas()">
               <option value="">- Todas as épocas -</option>
@@ -935,7 +1024,7 @@ if ($pauta_aberta > 0) {
               <?php endforeach; ?>
             </select>
           </div>
-          <button type="button" class="btn-sm" onclick="document.getElementById('search_pautas_curso').value='';document.getElementById('search_pautas_epoca').value='';filtrarPautas();" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:0;">Limpar</button>
+          <button type="button" class="btn-sm" onclick="document.getElementById('search_pautas_curso').value='';document.getElementById('search_pautas_ano_letivo').value='';document.getElementById('search_pautas_semestre').value='';document.getElementById('search_pautas_epoca').value='';document.getElementById('search_pautas_tipo').value='';toggleEpocaFiltroField();filtrarPautas();" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:0;">Limpar</button>
         </div>
         <div id="sem-pautas-filtro" style="display:none;padding:10px 0;color:#888;">Nenhuma pauta corresponde aos filtros.</div>
         <?php foreach ($pautasPorEpoca as $chaveEpoca => $epocaData): ?>
@@ -943,7 +1032,7 @@ if ($pauta_aberta > 0) {
           <?php if (empty($listaEpoca)) { continue; } ?>
           <?php $epocaNome = $epocaData['epoca']; ?>
           <?php $tipoAvaliacao = $epocaData['tipo_avaliacao']; ?>
-          <div class="pautas-epoca-bloco" data-epoca="<?= htmlspecialchars(strtolower($epocaNome)) ?>" style="margin-bottom:16px;">
+          <div class="pautas-epoca-bloco" data-epoca="<?= htmlspecialchars(strtolower($epocaNome)) ?>" data-tipo="<?= htmlspecialchars(strtolower($tipoAvaliacao)) ?>" style="margin-bottom:16px;">
             <h4 class="section-title" style="margin-bottom:8px;">
               <?= htmlspecialchars($tipoAvaliacao === 'Exame' ? 'Época ' . $epocaNome : 'Contínua') ?>
             </h4>
@@ -965,12 +1054,22 @@ if ($pauta_aberta > 0) {
                     $pid        = (int)$p['pauta_id'];
                     $detailsId  = 'pauta_' . $pid;
                     $isOpen     = ($pauta_aberta === $pid);
+                    $criadorLogin = (string)($p['criado_por'] ?? '');
+                    $criadorNome = nome_utilizador_por_login($conn, $criadorLogin);
                   ?>
-                  <tr class="pauta-item-row" data-curso="<?= htmlspecialchars(strtolower((string)$p['curso_nome'])) ?>" data-epoca="<?= htmlspecialchars(strtolower((string)$epocaNome)) ?>">
+                  <tr class="pauta-item-row" data-curso="<?= htmlspecialchars(strtolower((string)$p['curso_nome'])) ?>" data-ano-letivo="<?= htmlspecialchars((string)$p['ano_letivo']) ?>" data-semestre="<?= (int)$p['semestre'] ?>" data-epoca="<?= htmlspecialchars(strtolower((string)$epocaNome)) ?>" data-tipo="<?= htmlspecialchars(strtolower((string)($p['tipo_avaliacao'] ?? 'Continua'))) ?>">
                     <td data-label="Curso"><?= htmlspecialchars($p['curso_nome']) ?></td>
                     <td data-label="Ano letivo"><?= htmlspecialchars($p['ano_letivo']) ?></td>
                     <td data-label="Semestre"><?= htmlspecialchars(formatar_semestre((int)$p['semestre'])) ?></td>
-                    <?php if (!$isAlunoView): ?><td data-label="Criado por"><?= htmlspecialchars($p['criado_por']) ?></td><?php endif; ?>
+                    <?php if (!$isAlunoView): ?>
+                    <td data-label="Criado por">
+                      <?php if ($grupo === 'ADMIN'): ?>
+                        <a href="alunos_admin.php?q=<?= urlencode($criadorLogin) ?>&open_login=<?= urlencode($criadorLogin) ?>" class="created-by-link"><?= htmlspecialchars($criadorNome) ?></a>
+                      <?php else: ?>
+                        <?= htmlspecialchars($criadorNome) ?>
+                      <?php endif; ?>
+                    </td>
+                    <?php endif; ?>
                     <td data-label="Data"><?= htmlspecialchars($p['criado_em']) ?></td>
                     <?php if (!$isAlunoView): ?>
                     <td data-label="Ações">
@@ -1075,7 +1174,11 @@ function togglePauta(rowId, btn, pautaId) {
 
 function filtrarPautas() {
   const cursoSel = document.getElementById('search_pautas_curso').value.trim();
+  const anoLetivoSel = document.getElementById('search_pautas_ano_letivo').value.trim();
+  const semestreSel = document.getElementById('search_pautas_semestre').value.trim();
   const epocaSel = document.getElementById('search_pautas_epoca').value.trim();
+  const tipoSel = document.getElementById('search_pautas_tipo').value.trim();
+  const usarFiltroEpoca = tipoSel === 'exame';
   const blocos = document.querySelectorAll('.pautas-epoca-bloco');
   let totalVisiveis = 0;
 
@@ -1085,10 +1188,16 @@ function filtrarPautas() {
 
     rows.forEach(row => {
       const curso = row.dataset.curso || '';
+      const anoLetivo = row.dataset.anoLetivo || '';
+      const semestre = row.dataset.semestre || '';
       const epoca = row.dataset.epoca || '';
+      const tipo = row.dataset.tipo || '';
       const cursoMatch = !cursoSel || curso === cursoSel;
-      const epocaMatch = !epocaSel || epoca === epocaSel;
-      const show = cursoMatch && epocaMatch;
+      const anoLetivoMatch = !anoLetivoSel || anoLetivo === anoLetivoSel;
+      const semestreMatch = !semestreSel || semestre === semestreSel;
+      const epocaMatch = !usarFiltroEpoca || !epocaSel || epoca === epocaSel;
+      const tipoMatch = !tipoSel || tipo === tipoSel;
+      const show = cursoMatch && anoLetivoMatch && semestreMatch && epocaMatch && tipoMatch;
 
       row.style.display = show ? '' : 'none';
 
@@ -1111,6 +1220,23 @@ function filtrarPautas() {
   });
 
   document.getElementById('sem-pautas-filtro').style.display = totalVisiveis === 0 ? 'block' : 'none';
+}
+
+function toggleEpocaFiltroField() {
+  const tipoSel = document.getElementById('search_pautas_tipo');
+  const epocaWrap = document.getElementById('search_pautas_epoca_wrap');
+  const epocaSel = document.getElementById('search_pautas_epoca');
+
+  if (!tipoSel || !epocaWrap || !epocaSel) {
+    return;
+  }
+
+  const mostrarEpoca = tipoSel.value.trim() === 'exame';
+  epocaWrap.style.display = mostrarEpoca ? '' : 'none';
+
+  if (!mostrarEpoca) {
+    epocaSel.value = '';
+  }
 }
 
 function toggleAlunoPerfil(rowId, btn) {
@@ -1161,6 +1287,8 @@ function addNotaBox(button) {
   boxes.appendChild(input);
   input.focus();
 }
+
+toggleEpocaFiltroField();
 </script>
 
 <?php

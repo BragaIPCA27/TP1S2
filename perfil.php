@@ -1,6 +1,6 @@
 ﻿<?php
 require_once 'config.php';
-require_group(['ALUNO', 'FUNCIONARIO']);
+require_group(['ALUNO', 'FUNCIONARIO', 'GESTOR']);
 
 $login = $_SESSION['user']['login'];
 $matricula = $login; // usar login como matricula (unico e obrigatorio)
@@ -8,10 +8,16 @@ $grupo = $_SESSION['user']['grupo_nome'] ?? 'ALUNO';
 
 function traduz_tipo_utilizador(string $grupo): string {
   return match ($grupo) {
-    'ADMIN' => 'Admin',
+    'ADMIN' => 'Administrador',
+    'GESTOR' => 'Gestor',
     'FUNCIONARIO' => 'Funcionario',
     default => 'Aluno',
   };
+}
+
+function nome_tem_apelido(string $nome): bool {
+  $partes = preg_split('/\s+/', trim($nome)) ?: [];
+  return count(array_filter($partes, static fn(string $p): bool => $p !== '')) >= 2;
 }
 
 function apagar_foto_perfil(?string $path): void {
@@ -27,21 +33,21 @@ function apagar_foto_perfil(?string $path): void {
 
 function guardar_foto_upload(array $ficheiro, ?string $antigaPath = null): string {
   if (($ficheiro['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-    throw new RuntimeException('Nao foi possivel carregar a fotografia.');
+    throw new RuntimeException('Não foi possível carregar a fotografia.');
   }
 
   if (($ficheiro['size'] ?? 0) > 2 * 1024 * 1024) {
-    throw new RuntimeException('A fotografia nao pode ultrapassar 2MB.');
+    throw new RuntimeException('A fotografia não pode ultrapassar 2MB.');
   }
 
   $tmp = $ficheiro['tmp_name'] ?? '';
   if ($tmp === '' || !is_uploaded_file($tmp)) {
-    throw new RuntimeException('Ficheiro de fotografia invalido.');
+    throw new RuntimeException('Ficheiro de fotografia inválido.');
   }
 
   $info = @getimagesize($tmp);
   if (!$info || !isset($info['mime'])) {
-    throw new RuntimeException('Seleciona uma imagem valida em JPG, PNG ou WebP.');
+    throw new RuntimeException('Selecione uma imagem válida em JPG, PNG ou WebP.');
   }
 
   $ext = match ($info['mime']) {
@@ -52,18 +58,18 @@ function guardar_foto_upload(array $ficheiro, ?string $antigaPath = null): strin
   };
 
   if ($ext === '') {
-    throw new RuntimeException('Seleciona uma imagem valida em JPG, PNG ou WebP.');
+    throw new RuntimeException('Selecione uma imagem válida em JPG, PNG ou WebP.');
   }
 
   $dir = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'perfis';
   if (!is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {
-    throw new RuntimeException('Nao foi possivel preparar a pasta das fotografias.');
+    throw new RuntimeException('Não foi possível preparar a pasta das fotografias.');
   }
 
   $nome = 'perfil_' . bin2hex(random_bytes(16)) . '.' . $ext;
   $destino = $dir . DIRECTORY_SEPARATOR . $nome;
   if (!move_uploaded_file($tmp, $destino)) {
-    throw new RuntimeException('Nao foi possivel guardar a fotografia.');
+    throw new RuntimeException('Não foi possível guardar a fotografia.');
   }
 
   if ($antigaPath && $antigaPath !== 'assets/img/perfis/' . $nome) {
@@ -75,21 +81,21 @@ function guardar_foto_upload(array $ficheiro, ?string $antigaPath = null): strin
 
 function guardar_foto_base64(string $imagemBase64, ?string $antigaPath = null): string {
   if (!preg_match('/^data:(image\/(jpeg|png|webp));base64,/', $imagemBase64)) {
-    throw new RuntimeException('A imagem recortada e invalida.');
+    throw new RuntimeException('A imagem recortada é inválida.');
   }
 
   $dados = base64_decode(substr($imagemBase64, strpos($imagemBase64, ',') + 1), true);
   if ($dados === false) {
-    throw new RuntimeException('A imagem recortada e invalida.');
+    throw new RuntimeException('A imagem recortada é inválida.');
   }
 
   if (strlen($dados) > 2 * 1024 * 1024) {
-    throw new RuntimeException('A fotografia nao pode ultrapassar 2MB.');
+    throw new RuntimeException('A fotografia não pode ultrapassar 2MB.');
   }
 
   $info = @getimagesizefromstring($dados);
   if (!$info || !isset($info['mime'])) {
-    throw new RuntimeException('A imagem recortada e invalida.');
+    throw new RuntimeException('A imagem recortada é inválida.');
   }
 
   $ext = match ($info['mime']) {
@@ -100,18 +106,18 @@ function guardar_foto_base64(string $imagemBase64, ?string $antigaPath = null): 
   };
 
   if ($ext === '') {
-    throw new RuntimeException('Seleciona uma imagem valida em JPG, PNG ou WebP.');
+    throw new RuntimeException('Selecione uma imagem válida em JPG, PNG ou WebP.');
   }
 
   $dir = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'img' . DIRECTORY_SEPARATOR . 'perfis';
   if (!is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {
-    throw new RuntimeException('Nao foi possivel preparar a pasta das fotografias.');
+    throw new RuntimeException('Não foi possível preparar a pasta das fotografias.');
   }
 
   $nome = 'perfil_' . bin2hex(random_bytes(16)) . '.' . $ext;
   $destino = $dir . DIRECTORY_SEPARATOR . $nome;
   if (file_put_contents($destino, $dados) === false) {
-    throw new RuntimeException('Nao foi possivel guardar a fotografia.');
+    throw new RuntimeException('Não foi possível guardar a fotografia.');
   }
 
   if ($antigaPath && $antigaPath !== 'assets/img/perfis/' . $nome) {
@@ -121,7 +127,7 @@ function guardar_foto_base64(string $imagemBase64, ?string $antigaPath = null): 
   return 'assets/img/perfis/' . $nome;
 }
 
-$stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM alunos WHERE login = ? LIMIT 1");
+$stmt = $conn->prepare("SELECT a.nome, a.email, a.telefone, a.morada, a.foto_path, u.approval_status, u.approved_by, u.approved_at FROM alunos a LEFT JOIN users u ON u.login = a.login WHERE a.login = ? LIMIT 1");
 $stmt->bind_param("s", $login);
 $stmt->execute();
 $perfil = $stmt->get_result()->fetch_assoc() ?: [];
@@ -218,24 +224,33 @@ if ($grupo === 'ALUNO') {
   $stmtCF = $conn->prepare(
     "SELECT c.ID AS curso_id,
             c.Nome AS nome_curso,
-            MAX(x.registado_em) AS ultima_edicao,
-            COUNT(*) AS total_registos
-       FROM (
-             SELECT p.curso_id, pn.registado_em
-               FROM pauta_notas pn
-               JOIN pautas p ON p.pauta_id = pn.pauta_id
-              WHERE pn.registado_por = ?
-             UNION ALL
-             SELECT p.curso_id, pnd.registado_em
-               FROM pauta_notas_disciplinas pnd
-               JOIN pautas p ON p.pauta_id = pnd.pauta_id
-              WHERE pnd.registado_por = ?
-       ) x
-       JOIN cursos c ON c.ID = x.curso_id
-      GROUP BY c.ID, c.Nome
-      ORDER BY ultima_edicao DESC, c.Nome"
+            fc.assigned_by,
+            fc.assigned_at,
+            COALESCE(ed.total_registos, 0) AS total_registos,
+            ed.ultima_edicao
+       FROM funcionario_cursos fc
+       JOIN cursos c ON c.ID = fc.curso_id
+  LEFT JOIN (
+            SELECT x.curso_id,
+                   MAX(x.registado_em) AS ultima_edicao,
+                   COUNT(*) AS total_registos
+              FROM (
+                    SELECT p.curso_id, pn.registado_em
+                      FROM pauta_notas pn
+                      JOIN pautas p ON p.pauta_id = pn.pauta_id
+                     WHERE pn.registado_por = ?
+                    UNION ALL
+                    SELECT p.curso_id, pnd.registado_em
+                      FROM pauta_notas_disciplinas pnd
+                      JOIN pautas p ON p.pauta_id = pnd.pauta_id
+                     WHERE pnd.registado_por = ?
+              ) x
+          GROUP BY x.curso_id
+       ) ed ON ed.curso_id = fc.curso_id
+      WHERE fc.funcionario_login = ?
+      ORDER BY c.Nome"
   );
-  $stmtCF->bind_param('ss', $login, $login);
+  $stmtCF->bind_param('sss', $login, $login, $login);
   $stmtCF->execute();
   $cursosAssociadosFuncionario = $stmtCF->get_result()->fetch_all(MYSQLI_ASSOC);
 }
@@ -260,11 +275,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 
   if ($nome === '') {
-    $erro = 'O nome e obrigatorio.';
+    $erro = 'O nome é obrigatório.';
+  } elseif (!nome_tem_apelido($nome)) {
+    $erro = 'Indique nome e apelido.';
   }
 
   if (!$erro && $telefoneNorm !== null && !preg_match('/^[0-9+\-()]{6,20}$/', $telefoneNorm)) {
-    $erro = 'Telemovel invalido.';
+    $erro = 'Telemóvel inválido.';
   }
 
   if (!$erro && $telefoneNorm !== null) {
@@ -272,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->bind_param('ss', $telefoneNorm, $login);
     $stmt->execute();
     if ($stmt->get_result()->num_rows > 0) {
-      $erro = 'Esse telemovel ja esta registado noutro utilizador.';
+      $erro = 'Esse telemóvel já está registado noutro utilizador.';
     }
   }
 
@@ -307,18 +324,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       );
       $stmt->bind_param('sssssss', $login, $nome, $email, $telefoneNorm, $morada, $fotoPath, $status);
       $stmt->execute();
-      $ok = 'Pedido de alteracao enviado. Aguarda aprovacao do administrador.';
+      $ok = 'Pedido de alteração enviado. Aguarde aprovação do administrador.';
     } catch (RuntimeException $e) {
       $erro = $e->getMessage();
     } catch (mysqli_sql_exception $e) {
       if ($e->getCode() === 1062) {
-        $erro = 'Telemovel ja esta registado noutro utilizador.';
+        $erro = 'Telemóvel já está registado noutro utilizador.';
       } else {
         throw $e;
       }
     }
 
-    $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM alunos WHERE login = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT a.nome, a.email, a.telefone, a.morada, a.foto_path, u.approval_status, u.approved_by, u.approved_at FROM alunos a LEFT JOIN users u ON u.login = a.login WHERE a.login = ? LIMIT 1");
     $stmt->bind_param('s', $login);
     $stmt->execute();
     $perfil = $stmt->get_result()->fetch_assoc() ?: [];
@@ -362,7 +379,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <strong>Morada:</strong> <?= htmlspecialchars($perfil['morada'] ?? '') ?><br>
         <?php endif; ?>
         <strong>Tipo de utilizador:</strong> <?= htmlspecialchars(traduz_tipo_utilizador($grupo)) ?><br>
-        <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?>
+        <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?><br>
+        <?php if (!empty($perfil['approval_status'])): ?>
+        <strong>Estado da conta:</strong> <?= $perfil['approval_status'] === 'APPROVED' ? 'Aprovado' : ($perfil['approval_status'] === 'REJECTED' ? 'Recusado' : 'Pendente') ?><br>
+        <?php endif; ?>
+        <?php if (!empty($perfil['approved_by'])): ?>
+        <strong>Aprovado por:</strong> <?= htmlspecialchars(nome_utilizador_por_login($conn, (string)$perfil['approved_by'])) ?><br>
+        <?php endif; ?>
+        <?php if (!empty($perfil['approved_at'])): ?>
+        <strong>Aprovado em:</strong> <?= htmlspecialchars($perfil['approved_at']) ?><br>
+        <?php endif; ?>
       </div>
     </div>
 
@@ -485,15 +511,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($grupo === 'FUNCIONARIO'): ?>
     <div class="card">
       <div class="table-section">
-        <h3>Cursos Geridos</h3>
+        <h3>Cursos Associados</h3>
         <?php if (empty($cursosAssociadosFuncionario)): ?>
-          <p class="empty-state">Ainda nao editaste notas em nenhum curso.</p>
+          <p class="empty-state">Nao tens cursos associados.</p>
         <?php else: ?>
           <div class="table-wrapper">
             <table>
               <thead>
                 <tr>
                   <th>Curso</th>
+                  <th>Associado em</th>
                   <th>Ultima Edicao</th>
                   <th>Registos</th>
                 </tr>
@@ -507,6 +534,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     onkeydown="if(event.key==='Enter' || event.key===' '){ event.preventDefault(); window.location.href=this.dataset.href; }"
                     style="cursor:pointer;">
                   <td><?= htmlspecialchars((string)$cursoFunc['nome_curso']) ?></td>
+                  <td>
+                    <?php if (!empty($cursoFunc['assigned_at'])): ?>
+                      <?= date('d/m/Y H:i', strtotime((string)$cursoFunc['assigned_at'])) ?>
+                    <?php else: ?>
+                      -
+                    <?php endif; ?>
+                  </td>
                   <td>
                     <?php if (!empty($cursoFunc['ultima_edicao'])): ?>
                       <?= date('d/m/Y H:i', strtotime((string)$cursoFunc['ultima_edicao'])) ?>
@@ -556,7 +590,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <?php if ($isRejected && !empty($pedidoPerfil['obs_nome'])): ?>
                 <div class="field-obs-notice"><?= htmlspecialchars($pedidoPerfil['obs_nome']) ?></div>
               <?php endif; ?>
-              <input id="nome" name="nome" type="text" required value="<?= $prefNome ?>">
+              <input id="nome" name="nome" type="text" required pattern=".*\s+.*" title="Indique nome e apelido." value="<?= $prefNome ?>">
             </div>
 
             <div class="form-field">
@@ -576,12 +610,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <div class="form-field">
-              <label for="foto">Fotografia (max. 2MB)</label>
+              <label for="foto">Fotografia</label>
               <?php if ($isRejected && !empty($pedidoPerfil['obs_foto'])): ?>
                 <div class="field-obs-notice"><?= htmlspecialchars($pedidoPerfil['obs_foto']) ?></div>
               <?php endif; ?>
               <input id="foto" name="foto" type="file" accept="image/jpeg,image/png,image/webp">
-              <div class="photo-help">JPG, PNG, WebP. Arrasta para ajustar.</div>
+              <div class="photo-help">Formatos permitidos: JPG, PNG ou WebP. Tamanho máximo: 2MB.</div>
             </div>
             <input type="hidden" name="foto_cortada" id="foto_cortada">
 

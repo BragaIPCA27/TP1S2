@@ -3,11 +3,20 @@ require_once 'config.php';
 require_group(['ADMIN']);
 
 $grupo = $_SESSION['user']['grupo_nome'] ?? 'ADMIN';
+$login = $_SESSION['user']['login'] ?? '';
 $tipoUtilizador = match ($grupo) {
-  'ADMIN' => 'Admin',
+  'ADMIN' => 'Administrador',
   'FUNCIONARIO' => 'Funcionário',
   default => 'Aluno',
 };
+
+$perfilAdmin = [];
+if ($login !== '') {
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfilAdmin = $stmt->get_result()->fetch_assoc() ?: [];
+}
 
 $erro = null;
 $ok = null;
@@ -39,7 +48,26 @@ if ($editCursoId > 0) {
   }
 }
 
-$cursosRes = $conn->query("SELECT ID, Nome, descricao FROM cursos ORDER BY Nome");
+$colSubmetidoPor = $conn->query("SHOW COLUMNS FROM cursos LIKE 'submetido_por'")->fetch_assoc();
+if (!$colSubmetidoPor) {
+  $conn->query("ALTER TABLE cursos ADD COLUMN submetido_por VARCHAR(20) DEFAULT NULL");
+}
+$colSubmetidoEm = $conn->query("SHOW COLUMNS FROM cursos LIKE 'submetido_em'")->fetch_assoc();
+if (!$colSubmetidoEm) {
+  $conn->query("ALTER TABLE cursos ADD COLUMN submetido_em DATETIME DEFAULT NULL");
+}
+
+$submetidoFallback = (string)($_SESSION['user']['login'] ?? 'gestor');
+$stmtFillCursos = $conn->prepare(
+  "UPDATE cursos
+      SET submetido_por = CASE WHEN submetido_por IS NULL OR TRIM(submetido_por) = '' THEN ? ELSE submetido_por END,
+          submetido_em = CASE WHEN submetido_em IS NULL THEN NOW() ELSE submetido_em END
+    WHERE submetido_por IS NULL OR TRIM(submetido_por) = '' OR submetido_em IS NULL"
+);
+$stmtFillCursos->bind_param('s', $submetidoFallback);
+$stmtFillCursos->execute();
+
+$cursosRes = $conn->query("SELECT ID, Nome, descricao, submetido_por, submetido_em FROM cursos ORDER BY Nome");
 $cursosLista = [];
 while ($cursoItem = $cursosRes->fetch_assoc()) {
   $cursosLista[] = $cursoItem;
@@ -81,9 +109,9 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
               </div>
               <?php if ($editCurso): ?>
                 <input type="hidden" name="curso_id" value="<?= (int)$editCurso['ID'] ?>">
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <div class="inline-actions-wrap">
                   <button type="submit" name="update_curso">Guardar</button>
-                  <a class="action-btn" href="cursos.php" style="background:linear-gradient(135deg,#64748b,#475569);margin-right:0;">Cancelar</a>
+                  <a class="action-btn action-btn-neutral no-right-margin" href="cursos.php">Cancelar</a>
                 </div>
               <?php else: ?>
                 <button type="submit" name="add_curso">Adicionar</button>
@@ -96,9 +124,9 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
       <div class="card">
         <div class="table-section">
           <h3>Lista de Cursos</h3>
-          <div class="search-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;">
-            <div style="flex:1;min-width:220px;">
-              <label for="search_curso_admin" style="margin-bottom:4px;">Filtrar por curso</label>
+          <div class="search-bar cursos-filter-bar">
+            <div class="filter-field-grow-220">
+              <label for="search_curso_admin" class="filter-label-compact">Filtrar por curso</label>
               <select id="search_curso_admin" onchange="filtrarCursosAdmin()">
                 <option value="">- Todos os cursos -</option>
                 <?php foreach ($cursosLista as $curso): ?>
@@ -106,9 +134,9 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                 <?php endforeach; ?>
               </select>
             </div>
-            <button type="button" class="btn-sm" onclick="document.getElementById('search_curso_admin').value='';filtrarCursosAdmin();" style="background:linear-gradient(135deg,#64748b,#475569);margin-bottom:0;">Limpar</button>
+            <button type="button" class="btn-sm btn-neutral btn-align-bottom" onclick="document.getElementById('search_curso_admin').value='';filtrarCursosAdmin();">Limpar</button>
           </div>
-          <div id="sem-cursos-filtro" style="display:none;padding:10px 0;color:#888;">Nenhum curso corresponde ao filtro.</div>
+          <div id="sem-cursos-filtro" class="empty-filter-message">Nenhum curso corresponde ao filtro.</div>
           <div class="table-wrapper">
             <table>
               <thead>
@@ -116,6 +144,8 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                   <th>ID</th>
                   <th>Nome</th>
                   <th>Descrição</th>
+                  <th>Submetido por</th>
+                  <th>Data de Submissão</th>
                   <th>Ações</th>
                 </tr>
               </thead>
@@ -129,11 +159,24 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                       <?php if ($descricaoCurso !== ''): ?>
                         <details>
                           <summary>Ver descrição</summary>
-                          <div style="margin-top:8px;white-space:normal;"><?= nl2br(htmlspecialchars($descricaoCurso)) ?></div>
+                          <div class="description-expanded-content"><?= nl2br(htmlspecialchars($descricaoCurso)) ?></div>
                         </details>
                       <?php else: ?>
                         -
                       <?php endif; ?>
+                    </td>
+                    <td data-label="Submetido por (utilizador)">
+                      <?php $submetidoPor = trim((string)($r['submetido_por'] ?? '')); ?>
+                      <?php if ($submetidoPor !== '' && $submetidoPor !== '-'): ?>
+                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                          <?= htmlspecialchars(nome_utilizador_por_login($conn, $submetidoPor)) ?>
+                        </a>
+                      <?php else: ?>
+                        -
+                      <?php endif; ?>
+                    </td>
+                    <td data-label="Data de Submissão">
+                      <span class="meta-small"><?= htmlspecialchars((string)($r['submetido_em'] ?? '-')) ?></span>
                     </td>
                     <td data-label="Ações">
                       <a class="action-btn edit" href="cursos.php?edit_curso=<?= (int)$r['ID'] ?>">Editar</a>
@@ -143,7 +186,7 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                 <?php endforeach; ?>
                 <?php if (count($cursosLista) === 0): ?>
                   <tr>
-                    <td colspan="4" class="empty-state">
+                    <td colspan="6" class="empty-state">
                       <p>Nenhum curso cadastrado</p>
                     </td>
                   </tr>
@@ -158,6 +201,13 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
     <div class="sidebar">
       <div class="card">
         <div class="user-info">
+          <?php if (!empty($perfilAdmin['foto_path'])): ?>
+            <img class="profile-photo" src="<?= htmlspecialchars((string)$perfilAdmin['foto_path']) ?>" alt="Fotografia de perfil">
+          <?php endif; ?>
+          <?php if (!empty($perfilAdmin['nome'])): ?><strong>Nome:</strong> <?= htmlspecialchars((string)$perfilAdmin['nome']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['email'])): ?><strong>Email:</strong> <?= htmlspecialchars((string)$perfilAdmin['email']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['telefone'])): ?><strong>Telefone:</strong> <?= htmlspecialchars((string)$perfilAdmin['telefone']) ?><br><?php endif; ?>
+          <?php if (!empty($perfilAdmin['morada'])): ?><strong>Morada:</strong> <?= htmlspecialchars((string)$perfilAdmin['morada']) ?><br><?php endif; ?>
           <strong>Tipo de utilizador:</strong> <?= htmlspecialchars($tipoUtilizador) ?><br>
           <strong>Utilizador:</strong> <?= htmlspecialchars($_SESSION['user']['login']) ?>
         </div>

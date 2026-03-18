@@ -2,7 +2,22 @@
 require_once 'config.php';
 require_login();
 
+$submetidoPor = (string)($_SESSION['user']['login'] ?? '');
+
+function garantir_colunas_submissao(mysqli $conn, string $tabela): void {
+    $colSubmetidoPor = $conn->query("SHOW COLUMNS FROM {$tabela} LIKE 'submetido_por'")->fetch_assoc();
+    if (!$colSubmetidoPor) {
+        $conn->query("ALTER TABLE {$tabela} ADD COLUMN submetido_por VARCHAR(20) DEFAULT NULL");
+    }
+
+    $colSubmetidoEm = $conn->query("SHOW COLUMNS FROM {$tabela} LIKE 'submetido_em'")->fetch_assoc();
+    if (!$colSubmetidoEm) {
+        $conn->query("ALTER TABLE {$tabela} ADD COLUMN submetido_em DATETIME DEFAULT NULL");
+    }
+}
+
 if (isset($_POST['add_curso'])) {
+    garantir_colunas_submissao($conn, 'cursos');
     $nome = trim($_POST['nome'] ?? '');
     $descricao = trim($_POST['descricao'] ?? '');
     $descricao = $descricao === '' ? null : $descricao;
@@ -25,8 +40,8 @@ if (isset($_POST['add_curso'])) {
     }
 
     // 2) Inserir
-    $stmt = $conn->prepare("INSERT INTO cursos (Nome, descricao) VALUES (?, ?)");
-    $stmt->bind_param("ss", $nome_norm, $descricao);
+    $stmt = $conn->prepare("INSERT INTO cursos (Nome, descricao, submetido_por, submetido_em) VALUES (?, ?, ?, NOW())");
+    $stmt->bind_param("sss", $nome_norm, $descricao, $submetidoPor);
 
     try {
         $stmt->execute();
@@ -85,6 +100,7 @@ if (isset($_POST['update_curso'])) {
 }
 
 if (isset($_POST['add_disciplina'])) {
+    garantir_colunas_submissao($conn, 'disciplinas');
     $nome = trim($_POST['nome'] ?? '');
 
     if ($nome === '') {
@@ -105,8 +121,8 @@ if (isset($_POST['add_disciplina'])) {
     }
 
     // 2) Inserir
-    $stmt = $conn->prepare("INSERT INTO disciplinas (Nome_disc) VALUES (?)");
-    $stmt->bind_param("s", $nome_norm);
+    $stmt = $conn->prepare("INSERT INTO disciplinas (Nome_disc, submetido_por, submetido_em) VALUES (?, ?, NOW())");
+    $stmt->bind_param("ss", $nome_norm, $submetidoPor);
 
     try {
         $stmt->execute();
@@ -175,6 +191,7 @@ if (isset($_POST['add_matricula'])) {
 }
 
 if (isset($_POST['add_plano'])) {
+    garantir_colunas_submissao($conn, 'plano_estudos');
     $curso_id = (int)$_POST['curso_id'];
     $disciplina_id = (int)$_POST['disciplina_id'];
     $semestre = (int)($_POST['semestre'] ?? 1);
@@ -189,8 +206,8 @@ if (isset($_POST['add_plano'])) {
         if ($check->get_result()->num_rows > 0) {
             header("Location: plano_estudos.php?error=already_exists");
         } else {
-            $stmt = $conn->prepare("INSERT INTO plano_estudos (CURSOS, DISCIPLINA, semestre) VALUES (?, ?, ?)");
-            $stmt->bind_param("iii", $curso_id, $disciplina_id, $semestre);
+            $stmt = $conn->prepare("INSERT INTO plano_estudos (CURSOS, DISCIPLINA, semestre, submetido_por, submetido_em) VALUES (?, ?, ?, ?, NOW())");
+            $stmt->bind_param("iiis", $curso_id, $disciplina_id, $semestre, $submetidoPor);
             $stmt->execute();
             header("Location: plano_estudos.php?success=added");
         }

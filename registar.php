@@ -264,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   }
 
                   $conn->commit();
-                  $sucesso = "Conta criada com sucesso. Aguarda aprovação do administrador antes de fazer login.";
+                  $sucesso = "Conta criada com sucesso. Aguarda aprovação dos serviços académicos antes de fazer login.";
                   $tipoConta = 'ALUNO';
                   $nomeAluno = '';
                   $apelidoAluno = '';
