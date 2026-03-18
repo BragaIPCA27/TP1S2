@@ -356,13 +356,23 @@ function traduz_status_matricula(string $status): string {
                     <span class="badge <?= $badgeClass ?>"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
                   </td>
                   <td data-label="Aprovado por">
-                    <?php if (!empty($alunoData['summary_aprovado_por']) && $alunoData['summary_aprovado_por'] !== '-'): ?>
-                      <a href="alunos_admin.php?q=<?= urlencode($alunoData['summary_aprovado_por']) ?>&open_login=<?= urlencode($alunoData['summary_aprovado_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
-                        <?= htmlspecialchars((string)$alunoData['summary_aprovado_por']) ?>
-                      </a>
-                    <?php else: ?>
-                      -
-                    <?php endif; ?>
+                      <?php
+                        if (!empty($alunoData['summary_aprovado_por']) && $alunoData['summary_aprovado_por'] !== '-') {
+                          // Se for funcionário, mostra só o nome, sem link
+                          if ($grupo === 'FUNCIONARIO') {
+                            echo htmlspecialchars((string)$alunoData['summary_aprovado_por']);
+                          } else {
+                            // ADMIN mantém o link
+                            ?>
+                            <a href="alunos_admin.php?q=<?= urlencode($alunoData['summary_aprovado_por']) ?>&open_login=<?= urlencode($alunoData['summary_aprovado_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                              <?= htmlspecialchars((string)$alunoData['summary_aprovado_por']) ?>
+                            </a>
+                            <?php
+                          }
+                        } else {
+                          echo '-';
+                        }
+                      ?>
                   </td>
                   <td data-label="Ações">
                     <button type="button" class="action-btn" onclick="toggleMatricula('<?= $detailsId ?>', null, 'manage')">Gerir</button>
@@ -422,13 +432,22 @@ function traduz_status_matricula(string $status): string {
                                     $approvedByNome = ($approvedByLogin && $approvedByLogin !== '-') ? nome_utilizador_por_login($conn, $approvedByLogin) : '-';
                                   ?>
                                   <div style="display:flex;align-items:center;justify-content:center;height:100%;">
-                                  <?php if ($approvedByNome !== '-' && !empty($approvedByLogin)): ?>
-                                    <a href="alunos_admin.php?q=<?= urlencode($approvedByLogin) ?>&open_login=<?= urlencode($approvedByLogin) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;white-space:nowrap;">
-                                      <?= htmlspecialchars($approvedByNome) ?>
-                                    </a>
-                                  <?php else: ?>
-                                    -
-                                  <?php endif; ?>
+                                    <?php
+                                      if ($approvedByNome !== '-' && !empty($approvedByLogin)) {
+                                        if ($grupo === 'FUNCIONARIO') {
+                                          echo htmlspecialchars($approvedByNome);
+                                        } else {
+                                          // ADMIN mantém o link
+                                          ?>
+                                          <a href="alunos_admin.php?q=<?= urlencode($approvedByLogin) ?>&open_login=<?= urlencode($approvedByLogin) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;white-space:nowrap;">
+                                            <?= htmlspecialchars($approvedByNome) ?>
+                                          </a>
+                                          <?php
+                                        }
+                                      } else {
+                                        echo '-';
+                                      }
+                                    ?>
                                   </div>
                                 </td>
                                 <td>

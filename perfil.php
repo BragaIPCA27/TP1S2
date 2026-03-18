@@ -1,10 +1,48 @@
 ﻿<?php
-require_once 'config.php';
-require_group(['ALUNO', 'FUNCIONARIO', 'GESTOR']);
 
-$login = $_SESSION['user']['login'];
+require_once 'config.php';
+require_group(['ALUNO', 'FUNCIONARIO', 'GESTOR', 'ADMIN']);
+
+// Se o parâmetro login estiver presente, mostrar esse perfil
+
+if (isset($_GET['login']) && $_GET['login'] !== '') {
+  $login = $_GET['login'];
+  // Detectar tipo de utilizador
+  $grupo = 'ALUNO';
+  $perfil = null;
+  // Verificar se é aluno
+  $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM alunos WHERE login = ? LIMIT 1");
+  $stmt->bind_param("s", $login);
+  $stmt->execute();
+  $perfil = $stmt->get_result()->fetch_assoc();
+  if ($perfil) {
+    $grupo = 'ALUNO';
+  } else {
+    // Verificar se é admin
+    $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM admin_perfis WHERE login = ? LIMIT 1");
+    $stmt->bind_param("s", $login);
+    $stmt->execute();
+    $perfil = $stmt->get_result()->fetch_assoc();
+    if ($perfil) {
+      $grupo = 'ADMIN';
+    } else {
+      // Verificar se é funcionário
+      $stmt = $conn->prepare("SELECT nome, email, telefone, morada, foto_path FROM funcionario_perfis WHERE login = ? LIMIT 1");
+      $stmt->bind_param("s", $login);
+      $stmt->execute();
+      $perfil = $stmt->get_result()->fetch_assoc();
+      if ($perfil) {
+        $grupo = 'FUNCIONARIO';
+      } else {
+        $grupo = 'ALUNO'; // fallback
+      }
+    }
+  }
+} else {
+  $login = $_SESSION['user']['login'];
+  $grupo = $_SESSION['user']['grupo_nome'] ?? 'ALUNO';
+}
 $matricula = $login; // usar login como matricula (unico e obrigatorio)
-$grupo = $_SESSION['user']['grupo_nome'] ?? 'ALUNO';
 
 function traduz_tipo_utilizador(string $grupo): string {
   return match ($grupo) {

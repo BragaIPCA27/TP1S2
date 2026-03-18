@@ -240,9 +240,11 @@ if ($grupo === 'ADMIN') {
             <table>
               <thead>
                 <tr>
-                  <th style="min-width:340px;text-align:left;padding-left:0.5em;">Cursos e disciplinas</th>
-                  <th style="min-width:200px;text-align:left;white-space:nowrap;">Submetido por</th>
-                  <th style="min-width:170px;text-align:left;white-space:nowrap;">Data de Submissão</th>
+                  <th>Cursos e disciplinas</th>
+                  <?php if ($grupo === 'ADMIN'): ?>
+                    <th>Submetido por</th>
+                    <th>Data</th>
+                  <?php endif; ?>
                 </tr>
               </thead>
               <tbody>
@@ -304,32 +306,36 @@ if ($grupo === 'ADMIN') {
                           <span class="course-chevron">▼</span>
                         </button>
                       </td>
-                      <td>
-                        <?php if (!empty($cursoData['submetido_por']) && $cursoData['submetido_por'] !== '-'): ?>
-                          <a href="alunos_admin.php?q=<?= urlencode($cursoData['submetido_por']) ?>&open_login=<?= urlencode($cursoData['submetido_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
-                            <?= htmlspecialchars($cursoData['submetido_por']) ?>
-                          </a>
-                        <?php else: ?>
-                          -
-                        <?php endif; ?>
-                      </td>
-                      <td>
-                        <?= htmlspecialchars(formatar_data_hora_curta((string)($cursoData['submetido_em'] ?? '-'))) ?>
-                      </td>
+                      <?php if ($grupo === 'ADMIN'): ?>
+                        <td>
+                          <?php if (!empty($cursoData['submetido_por']) && $cursoData['submetido_por'] !== '-'): ?>
+                            <a href="alunos_admin.php?q=<?= urlencode($cursoData['submetido_por']) ?>&open_login=<?= urlencode($cursoData['submetido_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                              <?= htmlspecialchars($cursoData['submetido_por']) ?>
+                            </a>
+                          <?php else: ?>
+                            -
+                          <?php endif; ?>
+                        </td>
+                        <td>
+                          <?= htmlspecialchars(formatar_data_hora_curta((string)($cursoData['submetido_em'] ?? '-'))) ?>
+                        </td>
+                      <?php endif; ?>
                     </tr>
                    <tr class="curso-panels-row" id="curso-panels-<?= $curso_index ?>">
-                      <td colspan="3">
+                      <td colspan="<?= $grupo === 'ADMIN' ? 3 : 1 ?>">
                         <div class="semestres-grid">
                           <?php foreach ([1, 2] as $semestreNum): ?>
                             <?php $disciplinasSemestre = $cursoData['semestres'][$semestreNum] ?? []; ?>
                             <section class="semestre-panel semestre-panel-<?= $semestreNum ?>" data-semestre-panel="<?= $semestreNum ?>">
                               <h4><?= $semestreNum ?>.º semestre</h4>
-                            <div class="semestre-header">
-                                    <span class="col-disciplina">Disciplina</span>
-                                    <span class="col-submetido">Submetido por</span>
-                                    <span class="col-data">Data</span>
-                                    <span class="col-acao">Ação</span>
-                                </div>
+                              <div class="semestre-header">
+                                <span class="col-disciplina">Disciplina</span>
+                                <?php if ($grupo === 'ADMIN'): ?>
+                                  <span class="col-submetido">Submetido por</span>
+                                  <span class="col-data">Data</span>
+                                  <span class="col-acao">Ação</span>
+                                <?php endif; ?>
+                              </div>
                               <?php if ($disciplinasSemestre !== []): ?>
                                 <ul class="semestre-list" aria-label="<?= $semestreNum ?>.º semestre">
                                   <?php foreach ($disciplinasSemestre as $disc): ?>
@@ -343,37 +349,41 @@ if ($grupo === 'ADMIN') {
         <?= htmlspecialchars($disc['disciplina']) ?>
     </span>
 
-    <!-- 2. COLUNA: SUBMETIDO POR -->
-    <span class="disciplina-submetido-col">
-        <?php if (!empty($disc['submetido_por']) && $disc['submetido_por'] !== '-'): ?>
-            <a href="alunos_admin.php?q=<?= urlencode($disc['submetido_por']) ?>&open_login=<?= urlencode($disc['submetido_por']) ?>"
-               class="submitted-by-link"
-               style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
-                      border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
-                      color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;
-                      box-shadow:0 4px 10px rgba(30,58,138,0.12);
-                      transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
-                <?= htmlspecialchars($disc['submetido_por']) ?>
-            </a>
-        <?php else: ?>
-            -
-        <?php endif; ?>
-    </span>
-
-    <!-- 3. COLUNA: DATA -->
-    <span class="disciplina-data">
-        <?= htmlspecialchars(formatar_data_hora_curta((string)$disc['submetido_em'])) ?>
-    </span>
-
-    <!-- 4. COLUNA: AÇÃO -->
     <?php if ($grupo === 'ADMIN'): ?>
-        <span class="semestre-action-col">
-            <a class="action-btn"
-               href="inserir.php?del_plano_curso=<?= (int)$disc['curso_id'] ?>&del_plano_disciplina=<?= (int)$disc['disciplina_id'] ?>"
-               onclick="return confirm('Tem a certeza que deseja remover este vínculo?')">
-               Remover
-            </a>
-        </span>
+      <!-- 2. COLUNA: SUBMETIDO POR -->
+      <span class="disciplina-submetido-col">
+        <?php if (!empty($disc['submetido_por']) && $disc['submetido_por'] !== '-'): ?>
+          <a href="alunos_admin.php?q=<?= urlencode($disc['submetido_por']) ?>&open_login=<?= urlencode($disc['submetido_por']) ?>"
+             class="submitted-by-link"
+             style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
+                border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
+                color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;
+                box-shadow:0 4px 10px rgba(30,58,138,0.12);
+                transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+            <?= htmlspecialchars($disc['submetido_por']) ?>
+          </a>
+        <?php else: ?>
+          -
+        <?php endif; ?>
+      </span>
+
+      <!-- 3. COLUNA: DATA -->
+      <span class="disciplina-data">
+          <?= htmlspecialchars(formatar_data_hora_curta((string)$disc['submetido_em'])) ?>
+      </span>
+
+      <!-- 4. COLUNA: AÇÃO -->
+      <span class="semestre-action-col">
+          <a class="action-btn"
+             href="inserir.php?del_plano_curso=<?= (int)$disc['curso_id'] ?>&del_plano_disciplina=<?= (int)$disc['disciplina_id'] ?>"
+             onclick="return confirm('Tem a certeza que deseja remover este vínculo?')">
+             Remover
+          </a>
+      </span>
+    <?php endif; ?>
+    <?php if ($grupo === 'ALUNO'): ?>
+      <!-- Para aluno, só disciplina e dash -->
+      <span class="disciplina-submetido-col"><span class="muted">-</span></span>
     <?php endif; ?>
 </li>
                                   <?php endforeach; ?>

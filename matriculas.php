@@ -281,12 +281,16 @@ if ($grupo === 'ADMIN') {
                   <th>Curso</th>
                   <?php if ($grupo === 'ADMIN'): ?>
                     <th>Aluno</th>
+                    <th>Data de Matrícula</th>
+                    <th>Estado</th>
+                    <th>Aprovado por</th>
+                    <th>Data de Aprovação</th>
+                    <th>Ações</th>
+                  <?php else: ?>
+                    <th>Data de Matrícula</th>
+                    <th>Estado</th>
+                    <th>Ações</th>
                   <?php endif; ?>
-                  <th>Data de Matrícula</th>
-                  <th>Estado</th>
-                  <th>Aprovado por (utilizador)</th>
-                  <th>Data de Aprovação</th>
-                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,30 +314,23 @@ if ($grupo === 'ADMIN') {
                     <td data-label="Curso"><?= htmlspecialchars($r['Nome']) ?></td>
                     <?php if ($grupo === 'ADMIN'): ?>
                       <td data-label="Aluno"><?= htmlspecialchars($r['login']) ?></td>
-                    <?php endif; ?>
-                    <td data-label="Data de Matrícula"><?= htmlspecialchars($r['data_matricula'] ?? '-') ?></td>
-                    <td data-label="Estado">
-                      <span class="status-pill <?= $statusClass ?>\"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
-                      <?php if ($grupo !== 'ADMIN' && !empty($r['observacao'])): ?>
-                        <div class="matricula-decision-note"><strong>Comentário:</strong> <?= htmlspecialchars((string)$r['observacao']) ?></div>
-                      <?php elseif ($grupo !== 'ADMIN' && in_array($status, ['APPROVED', 'REJECTED', 'CANCELLED', 'CANCEL_REJECTED'], true)): ?>
-                        <div class="matricula-decision-note matricula-decision-note-muted">Sem comentário associado à decisão.</div>
-                      <?php endif; ?>
-                    </td>
-                    <td data-label="Aprovado por (utilizador)">
-                      <?php if (!empty($r['approved_by']) && $r['approved_by'] !== '-'): ?>
-                        <a href="alunos_admin.php?q=<?= urlencode($r['approved_by']) ?>&open_login=<?= urlencode($r['approved_by']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
-                          <?= htmlspecialchars($decididoPorNome) ?>
-                        </a>
-                      <?php else: ?>
-                        -
-                      <?php endif; ?>
-                    </td>
-                    <td data-label="Data de Aprovação">
-                      <?= !empty($r['approved_at']) ? htmlspecialchars((string)$r['approved_at']) : '-' ?>
-                    </td>
-                    <td data-label="Ações">
-                      <?php if ($grupo === 'ADMIN'): ?>
+                      <td data-label="Data de Matrícula"><?= htmlspecialchars($r['data_matricula'] ?? '-') ?></td>
+                      <td data-label="Estado">
+                        <span class="status-pill <?= $statusClass ?>\"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
+                      </td>
+                      <td data-label="Aprovado por (utilizador)">
+                        <?php if (!empty($r['approved_by']) && $r['approved_by'] !== '-'): ?>
+                          <a href="alunos_admin.php?q=<?= urlencode($r['approved_by']) ?>&open_login=<?= urlencode($r['approved_by']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                            <?= htmlspecialchars($decididoPorNome) ?>
+                          </a>
+                        <?php else: ?>
+                          -
+                        <?php endif; ?>
+                      </td>
+                      <td data-label="Data de Aprovação">
+                        <?= !empty($r['approved_at']) ? htmlspecialchars((string)$r['approved_at']) : '-' ?>
+                      </td>
+                      <td data-label="Ações">
                         <?php if ($status === 'PENDING'): ?>
                           <a class="action-btn action-btn-approve" href="?action=approve&login=<?= urlencode($r['login']) ?>&curso_id=<?= (int)$r['ID'] ?>">Aprovar</a>
                           <a class="action-btn action-btn-reject" href="?action=reject&login=<?= urlencode($r['login']) ?>&curso_id=<?= (int)$r['ID'] ?>">Rejeitar</a>
@@ -344,7 +341,18 @@ if ($grupo === 'ADMIN') {
                           <a class="action-btn action-btn-approve" href="?action=restore&login=<?= urlencode($r['login']) ?>&curso_id=<?= (int)$r['ID'] ?>">Repor como aprovada</a>
                         <?php endif; ?>
                         <a class="action-btn" style="background:#95a5a6" href="?del_curso=<?= (int)$r['ID'] ?>&login=<?= urlencode($r['login']) ?>" onclick="return confirm('Tem a certeza que deseja remover esta matrícula?')">Remover</a>
-                      <?php else: ?>
+                      </td>
+                    <?php else: ?>
+                      <td data-label="Data de Matrícula"><?= htmlspecialchars($r['data_matricula'] ?? '-') ?></td>
+                      <td data-label="Estado">
+                        <span class="status-pill <?= $statusClass ?>\"><?= htmlspecialchars(traduz_status_matricula($status)) ?></span>
+                        <?php if (!empty($r['observacao'])): ?>
+                          <div class="matricula-decision-note"><strong>Comentário:</strong> <?= htmlspecialchars((string)$r['observacao']) ?></div>
+                        <?php elseif (in_array($status, ['APPROVED', 'REJECTED', 'CANCELLED', 'CANCEL_REJECTED'], true)): ?>
+                          <div class="matricula-decision-note matricula-decision-note-muted">Sem comentário associado à decisão.</div>
+                        <?php endif; ?>
+                      </td>
+                      <td data-label="Ações">
                         <?php if (in_array($status, ['APPROVED', 'CANCEL_REJECTED'], true)): ?>
                           <form method="post" style="display:inline;">
                             <input type="hidden" name="curso_id" value="<?= (int)$r['ID'] ?>">
@@ -355,8 +363,8 @@ if ($grupo === 'ADMIN') {
                         <?php else: ?>
                           <span style="font-size:12px;color:#64748b;">Sem ações disponíveis</span>
                         <?php endif; ?>
-                      <?php endif; ?>
-                    </td>
+                      </td>
+                    <?php endif; ?>
                   </tr>
                 <?php endwhile; ?>
                 <?php if ($count === 0): ?>

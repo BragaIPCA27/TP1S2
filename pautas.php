@@ -333,13 +333,17 @@ function renderInserirAlunoManual(int $pautaId, bool $canEdit, string $epoca, ar
     $telefone = htmlspecialchars((string)($aluno['telefone'] ?? '—'));
     $fotoPath = trim((string)($aluno['foto_path'] ?? ''));
     $fotoUrl = $fotoPath !== '' ? htmlspecialchars($fotoPath) : 'assets/img/perfis/default.png';
-    
+
     $html .= '<tr style="border-bottom:1px solid #eee;">';
     $html .= '<td style="padding:6px;text-align:center;">';
     $html .= '<img src="' . $fotoUrl . '" alt="' . $login . '" style="width:40px;height:40px;border-radius:4px;object-fit:cover;border:1px solid #ddd;">';
     $html .= '</td>';
     $html .= '<td style="padding:6px;">';
-    $html .= '<strong>' . $nome . '</strong>';
+    if ($isAlunoView) {
+      $html .= '<strong>' . $nome . '</strong>';
+    } else {
+      $html .= '<strong><a href="perfil.php?login=' . $login . '" style="color:inherit;text-decoration:underline;">' . $nome . '</a></strong>';
+    }
     if (!empty($aluno['morada'])) {
       $morada = htmlspecialchars((string)$aluno['morada']);
       $html .= '<br><span style="font-size:11px;color:#666;">' . $morada . '</span>';
