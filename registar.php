@@ -1,10 +1,6 @@
 <?php
 require_once 'config.php';
 
-// Se quiseres que qualquer pessoa possa registar-se, deixa assim.
-// Se quiseres que só ADMIN possa criar alunos, troca por:
-// require_group(['ADMIN']);
-
 function guardar_foto_registo(array $ficheiro): string {
   if (($ficheiro['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
     throw new RuntimeException('Para registar aluno, tens de enviar uma fotografia.');
