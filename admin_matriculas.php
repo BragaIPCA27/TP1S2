@@ -364,7 +364,7 @@ function traduz_status_matricula(string $status): string {
                           } else {
                             // ADMIN mantém o link
                             ?>
-                            <a href="alunos_admin.php?q=<?= urlencode($alunoData['summary_aprovado_por']) ?>&open_login=<?= urlencode($alunoData['summary_aprovado_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                            <a href="alunos_admin.php?q=<?= urlencode($alunoData['summary_aprovado_por']) ?>&open_login=<?= urlencode($alunoData['summary_aprovado_por']) ?>" class="submitted-by-link">
                               <?= htmlspecialchars((string)$alunoData['summary_aprovado_por']) ?>
                             </a>
                             <?php
@@ -439,8 +439,8 @@ function traduz_status_matricula(string $status): string {
                                         } else {
                                           // ADMIN mantém o link
                                           ?>
-                                          <a href="alunos_admin.php?q=<?= urlencode($approvedByLogin) ?>&open_login=<?= urlencode($approvedByLogin) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;white-space:nowrap;">
-                                            <?= htmlspecialchars($approvedByNome) ?>
+                                          <a href="alunos_admin.php?q=<?= urlencode($approvedByLogin) ?>&open_login=<?= urlencode($approvedByLogin) ?>" class="submitted-by-link">
+                                          <?= htmlspecialchars(nome_utilizador_por_login($conn, $submetidoPor)) ?>
                                           </a>
                                           <?php
                                         }

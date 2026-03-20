@@ -154,7 +154,7 @@ $disciplinas = $conn->query("SELECT ID, Nome_disc, submetido_por, submetido_em F
                       <?php if ($grupo === 'ALUNO'): ?>
                         <span class="muted">-</span>
                       <?php elseif ($submetidoPor !== '' && $submetidoPor !== '-'): ?>
-                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link">
                           <?= htmlspecialchars(nome_utilizador_por_login($conn, $submetidoPor)) ?>
                         </a>
                       <?php else: ?>

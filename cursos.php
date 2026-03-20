@@ -168,7 +168,7 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                     <td data-label="Submetido por (utilizador)">
                       <?php $submetidoPor = trim((string)($r['submetido_por'] ?? '')); ?>
                       <?php if ($submetidoPor !== '' && $submetidoPor !== '-'): ?>
-                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                        <a href="alunos_admin.php?q=<?= urlencode($submetidoPor) ?>&open_login=<?= urlencode($submetidoPor) ?>" class="submitted-by-link">
                           <?= htmlspecialchars(nome_utilizador_por_login($conn, $submetidoPor)) ?>
                         </a>
                       <?php else: ?>
@@ -179,15 +179,17 @@ while ($cursoItem = $cursosRes->fetch_assoc()) {
                       <span class="meta-small"><?= htmlspecialchars((string)($r['submetido_em'] ?? '-')) ?></span>
                     </td>
                     <td data-label="Ações">
-                      <a class="action-btn edit" href="cursos.php?edit_curso=<?= (int)$r['ID'] ?>">Editar</a>
-                      <a class="action-btn" href="inserir.php?del_curso=<?= (int)$r['ID'] ?>" onclick="return confirm('Tem a certeza que deseja excluir este curso?')">Excluir</a>
+                      <div class="cursos-action-btns">
+                        <a class="action-btn edit" href="cursos.php?edit_curso=<?= (int)$r['ID'] ?>">Editar</a>
+                        <a class="action-btn" href="inserir.php?del_curso=<?= (int)$r['ID'] ?>" onclick="return confirm('Tem a certeza que deseja excluir este curso?')">Excluir</a>
+                      </div>
                     </td>
                   </tr>
                 <?php endforeach; ?>
                 <?php if (count($cursosLista) === 0): ?>
                   <tr>
                     <td colspan="6" class="empty-state">
-                      <p>Nenhum curso cadastrado</p>
+                      <p>Nenhum curso registado</p>
                     </td>
                   </tr>
                 <?php endif; ?>

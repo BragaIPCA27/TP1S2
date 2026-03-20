@@ -309,7 +309,7 @@ if ($grupo === 'ADMIN') {
                       <?php if ($grupo === 'ADMIN'): ?>
                         <td>
                           <?php if (!empty($cursoData['submetido_por']) && $cursoData['submetido_por'] !== '-'): ?>
-                            <a href="alunos_admin.php?q=<?= urlencode($cursoData['submetido_por']) ?>&open_login=<?= urlencode($cursoData['submetido_por']) ?>" class="submitted-by-link" style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;box-shadow:0 4px 10px rgba(30,58,138,0.12);transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+                            <a href="alunos_admin.php?q=<?= urlencode($cursoData['submetido_por']) ?>&open_login=<?= urlencode($cursoData['submetido_por']) ?>&open_curso=<?= $curso_index ?>" class="submitted-by-link">
                               <?= htmlspecialchars($cursoData['submetido_por']) ?>
                             </a>
                           <?php else: ?>
@@ -353,13 +353,8 @@ if ($grupo === 'ADMIN') {
       <!-- 2. COLUNA: SUBMETIDO POR -->
       <span class="disciplina-submetido-col">
         <?php if (!empty($disc['submetido_por']) && $disc['submetido_por'] !== '-'): ?>
-          <a href="alunos_admin.php?q=<?= urlencode($disc['submetido_por']) ?>&open_login=<?= urlencode($disc['submetido_por']) ?>"
-             class="submitted-by-link"
-             style="display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;
-                border:1px solid #bfdbfe;background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);
-                color:#1e3a8a;font-size:12px;font-weight:700;text-decoration:none;
-                box-shadow:0 4px 10px rgba(30,58,138,0.12);
-                transition:transform 0.18s,box-shadow 0.18s,background 0.18s,color 0.18s,border-color 0.18s;">
+           <a href="alunos_admin.php?q=<?= urlencode($disc['submetido_por']) ?>&open_login=<?= urlencode($disc['submetido_por']) ?>&open_curso=<?= $curso_index ?>"
+             class="submitted-by-link">
             <?= htmlspecialchars($disc['submetido_por']) ?>
           </a>
         <?php else: ?>
@@ -631,6 +626,32 @@ if ($grupo === 'ADMIN') {
     window.addEventListener('DOMContentLoaded', function () {
       sincronizarCursosPlano();
       atualizarFiltrosDependentes();
+      // Abrir painel se open_curso estiver na URL
+      const params = new URLSearchParams(window.location.search);
+      const openCurso = params.get('open_curso');
+      if (openCurso) {
+        setTimeout(function() {
+          const detailRow = document.getElementById('curso-panels-' + openCurso);
+          const header = document.getElementById('curso-header-' + openCurso);
+          if (detailRow && !detailRow.classList.contains('open')) {
+            detailRow.classList.add('open');
+            detailRow.style.display = 'table-row';
+            if (header) header.classList.add('is-open');
+            // Mostrar disciplinas
+            const rows = detailRow.querySelectorAll('.disciplina-row');
+            rows.forEach(function(row) { row.style.display = ''; });
+            // Atualizar botão
+            if (header) {
+              const button = header.querySelector('.course-trigger');
+              if (button) {
+                button.setAttribute('aria-expanded', 'true');
+                const hint = button.querySelector('.course-hint');
+                if (hint) hint.textContent = 'Ocultar disciplinas';
+              }
+            }
+          }
+        }, 100);
+      }
     });
   </script>
   <?php render_auto_logout_on_close_script(); ?>
